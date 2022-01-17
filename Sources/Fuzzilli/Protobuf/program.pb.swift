@@ -609,6 +609,22 @@ public struct Fuzzilli_Protobuf_Instruction {
     set {operation = .destructArrayAndReassign(newValue)}
   }
 
+  public var destructObject: Fuzzilli_Protobuf_DestructObject {
+    get {
+      if case .destructObject(let v)? = operation {return v}
+      return Fuzzilli_Protobuf_DestructObject()
+    }
+    set {operation = .destructObject(newValue)}
+  }
+
+  public var destructObjectAndReassign: Fuzzilli_Protobuf_DestructObjectAndReassign {
+    get {
+      if case .destructObjectAndReassign(let v)? = operation {return v}
+      return Fuzzilli_Protobuf_DestructObjectAndReassign()
+    }
+    set {operation = .destructObjectAndReassign(newValue)}
+  }
+
   public var compare: Fuzzilli_Protobuf_Compare {
     get {
       if case .compare(let v)? = operation {return v}
@@ -769,6 +785,14 @@ public struct Fuzzilli_Protobuf_Instruction {
     set {operation = .beginSwitchCase(newValue)}
   }
 
+  public var switchBreak: Fuzzilli_Protobuf_SwitchBreak {
+    get {
+      if case .switchBreak(let v)? = operation {return v}
+      return Fuzzilli_Protobuf_SwitchBreak()
+    }
+    set {operation = .switchBreak(newValue)}
+  }
+
   public var endSwitch: Fuzzilli_Protobuf_EndSwitch {
     get {
       if case .endSwitch(let v)? = operation {return v}
@@ -849,6 +873,14 @@ public struct Fuzzilli_Protobuf_Instruction {
     set {operation = .beginForOf(newValue)}
   }
 
+  public var beginForOfWithDestruct: Fuzzilli_Protobuf_BeginForOfWithDestruct {
+    get {
+      if case .beginForOfWithDestruct(let v)? = operation {return v}
+      return Fuzzilli_Protobuf_BeginForOfWithDestruct()
+    }
+    set {operation = .beginForOfWithDestruct(newValue)}
+  }
+
   public var endForOf: Fuzzilli_Protobuf_EndForOf {
     get {
       if case .endForOf(let v)? = operation {return v}
@@ -857,12 +889,12 @@ public struct Fuzzilli_Protobuf_Instruction {
     set {operation = .endForOf(newValue)}
   }
 
-  public var `break`: Fuzzilli_Protobuf_Break {
+  public var loopBreak: Fuzzilli_Protobuf_LoopBreak {
     get {
-      if case .break(let v)? = operation {return v}
-      return Fuzzilli_Protobuf_Break()
+      if case .loopBreak(let v)? = operation {return v}
+      return Fuzzilli_Protobuf_LoopBreak()
     }
-    set {operation = .break(newValue)}
+    set {operation = .loopBreak(newValue)}
   }
 
   public var `continue`: Fuzzilli_Protobuf_Continue {
@@ -1016,6 +1048,8 @@ public struct Fuzzilli_Protobuf_Instruction {
     case reassign(Fuzzilli_Protobuf_Reassign)
     case destructArray(Fuzzilli_Protobuf_DestructArray)
     case destructArrayAndReassign(Fuzzilli_Protobuf_DestructArrayAndReassign)
+    case destructObject(Fuzzilli_Protobuf_DestructObject)
+    case destructObjectAndReassign(Fuzzilli_Protobuf_DestructObjectAndReassign)
     case compare(Fuzzilli_Protobuf_Compare)
     case conditionalOperation(Fuzzilli_Protobuf_ConditionalOperation)
     case eval(Fuzzilli_Protobuf_Eval)
@@ -1036,6 +1070,7 @@ public struct Fuzzilli_Protobuf_Instruction {
     case endIf(Fuzzilli_Protobuf_EndIf)
     case beginSwitch(Fuzzilli_Protobuf_BeginSwitch)
     case beginSwitchCase(Fuzzilli_Protobuf_BeginSwitchCase)
+    case switchBreak(Fuzzilli_Protobuf_SwitchBreak)
     case endSwitch(Fuzzilli_Protobuf_EndSwitch)
     case beginWhile(Fuzzilli_Protobuf_BeginWhile)
     case endWhile(Fuzzilli_Protobuf_EndWhile)
@@ -1046,8 +1081,9 @@ public struct Fuzzilli_Protobuf_Instruction {
     case beginForIn(Fuzzilli_Protobuf_BeginForIn)
     case endForIn(Fuzzilli_Protobuf_EndForIn)
     case beginForOf(Fuzzilli_Protobuf_BeginForOf)
+    case beginForOfWithDestruct(Fuzzilli_Protobuf_BeginForOfWithDestruct)
     case endForOf(Fuzzilli_Protobuf_EndForOf)
-    case `break`(Fuzzilli_Protobuf_Break)
+    case loopBreak(Fuzzilli_Protobuf_LoopBreak)
     case `continue`(Fuzzilli_Protobuf_Continue)
     case beginTry(Fuzzilli_Protobuf_BeginTry)
     case beginCatch(Fuzzilli_Protobuf_BeginCatch)
@@ -1302,6 +1338,14 @@ public struct Fuzzilli_Protobuf_Instruction {
         guard case .destructArrayAndReassign(let l) = lhs, case .destructArrayAndReassign(let r) = rhs else { preconditionFailure() }
         return l == r
       }()
+      case (.destructObject, .destructObject): return {
+        guard case .destructObject(let l) = lhs, case .destructObject(let r) = rhs else { preconditionFailure() }
+        return l == r
+      }()
+      case (.destructObjectAndReassign, .destructObjectAndReassign): return {
+        guard case .destructObjectAndReassign(let l) = lhs, case .destructObjectAndReassign(let r) = rhs else { preconditionFailure() }
+        return l == r
+      }()
       case (.compare, .compare): return {
         guard case .compare(let l) = lhs, case .compare(let r) = rhs else { preconditionFailure() }
         return l == r
@@ -1382,6 +1426,10 @@ public struct Fuzzilli_Protobuf_Instruction {
         guard case .beginSwitchCase(let l) = lhs, case .beginSwitchCase(let r) = rhs else { preconditionFailure() }
         return l == r
       }()
+      case (.switchBreak, .switchBreak): return {
+        guard case .switchBreak(let l) = lhs, case .switchBreak(let r) = rhs else { preconditionFailure() }
+        return l == r
+      }()
       case (.endSwitch, .endSwitch): return {
         guard case .endSwitch(let l) = lhs, case .endSwitch(let r) = rhs else { preconditionFailure() }
         return l == r
@@ -1422,12 +1470,16 @@ public struct Fuzzilli_Protobuf_Instruction {
         guard case .beginForOf(let l) = lhs, case .beginForOf(let r) = rhs else { preconditionFailure() }
         return l == r
       }()
+      case (.beginForOfWithDestruct, .beginForOfWithDestruct): return {
+        guard case .beginForOfWithDestruct(let l) = lhs, case .beginForOfWithDestruct(let r) = rhs else { preconditionFailure() }
+        return l == r
+      }()
       case (.endForOf, .endForOf): return {
         guard case .endForOf(let l) = lhs, case .endForOf(let r) = rhs else { preconditionFailure() }
         return l == r
       }()
-      case (.break, .break): return {
-        guard case .break(let l) = lhs, case .break(let r) = rhs else { preconditionFailure() }
+      case (.loopBreak, .loopBreak): return {
+        guard case .loopBreak(let l) = lhs, case .loopBreak(let r) = rhs else { preconditionFailure() }
         return l == r
       }()
       case (.continue, .continue): return {
@@ -1647,6 +1699,8 @@ extension Fuzzilli_Protobuf_Instruction: SwiftProtobuf.Message, SwiftProtobuf._M
     38: .same(proto: "reassign"),
     116: .same(proto: "destructArray"),
     117: .same(proto: "destructArrayAndReassign"),
+    118: .same(proto: "destructObject"),
+    119: .same(proto: "destructObjectAndReassign"),
     39: .same(proto: "compare"),
     96: .same(proto: "conditionalOperation"),
     40: .same(proto: "eval"),
@@ -1667,6 +1721,7 @@ extension Fuzzilli_Protobuf_Instruction: SwiftProtobuf.Message, SwiftProtobuf._M
     47: .same(proto: "endIf"),
     97: .same(proto: "beginSwitch"),
     98: .same(proto: "beginSwitchCase"),
+    104: .same(proto: "switchBreak"),
     99: .same(proto: "endSwitch"),
     48: .same(proto: "beginWhile"),
     49: .same(proto: "endWhile"),
@@ -1677,8 +1732,9 @@ extension Fuzzilli_Protobuf_Instruction: SwiftProtobuf.Message, SwiftProtobuf._M
     54: .same(proto: "beginForIn"),
     55: .same(proto: "endForIn"),
     56: .same(proto: "beginForOf"),
+    103: .same(proto: "beginForOfWithDestruct"),
     57: .same(proto: "endForOf"),
-    58: .same(proto: "break"),
+    58: .same(proto: "loopBreak"),
     59: .same(proto: "continue"),
     60: .same(proto: "beginTry"),
     61: .same(proto: "beginCatch"),
@@ -2397,16 +2453,16 @@ extension Fuzzilli_Protobuf_Instruction: SwiftProtobuf.Message, SwiftProtobuf._M
         }
       }()
       case 58: try {
-        var v: Fuzzilli_Protobuf_Break?
+        var v: Fuzzilli_Protobuf_LoopBreak?
         var hadOneofValue = false
         if let current = self.operation {
           hadOneofValue = true
-          if case .break(let m) = current {v = m}
+          if case .loopBreak(let m) = current {v = m}
         }
         try decoder.decodeSingularMessageField(value: &v)
         if let v = v {
           if hadOneofValue {try decoder.handleConflictingOneOf()}
-          self.operation = .break(v)
+          self.operation = .loopBreak(v)
         }
       }()
       case 59: try {
@@ -2942,6 +2998,32 @@ extension Fuzzilli_Protobuf_Instruction: SwiftProtobuf.Message, SwiftProtobuf._M
           self.operation = .createTemplateString(v)
         }
       }()
+      case 103: try {
+        var v: Fuzzilli_Protobuf_BeginForOfWithDestruct?
+        var hadOneofValue = false
+        if let current = self.operation {
+          hadOneofValue = true
+          if case .beginForOfWithDestruct(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.operation = .beginForOfWithDestruct(v)
+        }
+      }()
+      case 104: try {
+        var v: Fuzzilli_Protobuf_SwitchBreak?
+        var hadOneofValue = false
+        if let current = self.operation {
+          hadOneofValue = true
+          if case .switchBreak(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.operation = .switchBreak(v)
+        }
+      }()
       case 112: try {
         var v: Fuzzilli_Protobuf_StorePropertyWithBinop?
         var hadOneofValue = false
@@ -3018,6 +3100,32 @@ extension Fuzzilli_Protobuf_Instruction: SwiftProtobuf.Message, SwiftProtobuf._M
         if let v = v {
           if hadOneofValue {try decoder.handleConflictingOneOf()}
           self.operation = .destructArrayAndReassign(v)
+        }
+      }()
+      case 118: try {
+        var v: Fuzzilli_Protobuf_DestructObject?
+        var hadOneofValue = false
+        if let current = self.operation {
+          hadOneofValue = true
+          if case .destructObject(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.operation = .destructObject(v)
+        }
+      }()
+      case 119: try {
+        var v: Fuzzilli_Protobuf_DestructObjectAndReassign?
+        var hadOneofValue = false
+        if let current = self.operation {
+          hadOneofValue = true
+          if case .destructObjectAndReassign(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.operation = .destructObjectAndReassign(v)
         }
       }()
       default: break
@@ -3250,8 +3358,8 @@ extension Fuzzilli_Protobuf_Instruction: SwiftProtobuf.Message, SwiftProtobuf._M
       guard case .endForOf(let v)? = self.operation else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 57)
     }()
-    case .break?: try {
-      guard case .break(let v)? = self.operation else { preconditionFailure() }
+    case .loopBreak?: try {
+      guard case .loopBreak(let v)? = self.operation else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 58)
     }()
     case .continue?: try {
@@ -3418,6 +3526,14 @@ extension Fuzzilli_Protobuf_Instruction: SwiftProtobuf.Message, SwiftProtobuf._M
       guard case .createTemplateString(let v)? = self.operation else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 102)
     }()
+    case .beginForOfWithDestruct?: try {
+      guard case .beginForOfWithDestruct(let v)? = self.operation else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 103)
+    }()
+    case .switchBreak?: try {
+      guard case .switchBreak(let v)? = self.operation else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 104)
+    }()
     case .storePropertyWithBinop?: try {
       guard case .storePropertyWithBinop(let v)? = self.operation else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 112)
@@ -3441,6 +3557,14 @@ extension Fuzzilli_Protobuf_Instruction: SwiftProtobuf.Message, SwiftProtobuf._M
     case .destructArrayAndReassign?: try {
       guard case .destructArrayAndReassign(let v)? = self.operation else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 117)
+    }()
+    case .destructObject?: try {
+      guard case .destructObject(let v)? = self.operation else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 118)
+    }()
+    case .destructObjectAndReassign?: try {
+      guard case .destructObjectAndReassign(let v)? = self.operation else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 119)
     }()
     case nil: break
     }

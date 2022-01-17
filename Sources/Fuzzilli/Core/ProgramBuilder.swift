@@ -1315,8 +1315,18 @@ public class ProgramBuilder {
         return Array(outputs)
     }
 
-    public func destruct(_ input: Variable, selecting indices: [Int], into outputs: [Variable], hasRestElement: Bool) {
+    public func destruct(_ input: Variable, selecting indices: [Int], into outputs: [Variable], hasRestElement: Bool = false) {
         perform(DestructArrayAndReassign(indices: indices, hasRestElement: hasRestElement), withInputs: [input] + outputs)
+    }
+
+    @discardableResult
+    public func destruct(_ input: Variable, selecting properties: [String], hasRestElement: Bool = false) -> [Variable] {
+        let outputs = perform(DestructObject(properties: properties, hasRestElement: hasRestElement), withInputs: [input]).outputs
+        return Array(outputs)
+    }
+
+    public func destruct(_ input: Variable, selecting properties: [String], into outputs: [Variable], hasRestElement: Bool = false) {
+        perform(DestructObjectAndReassign(properties: properties, hasRestElement: hasRestElement), withInputs: [input] + outputs)
     }
 
     @discardableResult
@@ -1411,7 +1421,11 @@ public class ProgramBuilder {
     }
 
     public func callSuperConstructor(withArgs arguments: [Variable]) {
-        perform(CallSuperConstructor(numArguments: arguments.count), withInputs: arguments)
+        perform(CallSuperConstructor(numArguments: arguments.count, spreads: [Bool](repeating: false, count: arguments.count)), withInputs: arguments)
+    }
+
+    public func callSuperConstructor(_ function: Variable, withArgs arguments: [Variable], spreading spreads: [Bool]) {
+        perform(CallSuperConstructor(numArguments: arguments.count, spreads: spreads), withInputs: arguments)
     }
 
     @discardableResult
@@ -1448,31 +1462,41 @@ public class ProgramBuilder {
 
     public struct SwitchBuilder {
         public typealias SwitchCaseGenerator = () -> ()
-        fileprivate var defaultCaseGenerator: SwitchCaseGenerator? = nil
-        fileprivate var caseGenerators: [(value: Variable, fallsthrough: Bool, body: SwitchCaseGenerator)] = []
+        fileprivate var caseGenerators: [(value: Variable?, fallsthrough: Bool, body: SwitchCaseGenerator)] = []
+        var hasDefault: Bool = false
 
-        public mutating func addDefault(_ generator: @escaping SwitchCaseGenerator) {
-            assert(defaultCaseGenerator == nil)
-            defaultCaseGenerator = generator
+        public mutating func addDefault(previousCaseFallsThrough fallsThrough: Bool = false, body: @escaping SwitchCaseGenerator) {
+            assert(!hasDefault, "Cannot add more than one default case")
+            hasDefault = true
+            caseGenerators.append((nil, fallsThrough, body))
         }
 
-        public mutating func add(_ v: Variable, fallsThrough: Bool = false, body: @escaping SwitchCaseGenerator) {
-            assert(defaultCaseGenerator != nil, "Default case must be generated first due to the way FuzzIL represents switch statements")
+        public mutating func add(_ v: Variable, previousCaseFallsThrough fallsThrough: Bool = false, body: @escaping SwitchCaseGenerator) {
             caseGenerators.append((v, fallsThrough, body))
         }
     }
 
-    public func doSwitch(on v: Variable, body: (inout SwitchBuilder) -> ()) {
+    public func doSwitch(on switchVar: Variable, body: (inout SwitchBuilder) -> ()) {
         var builder = SwitchBuilder()
         body(&builder)
 
-        perform(BeginSwitch(), withInputs: [v])
-        builder.defaultCaseGenerator?()
-        for (val, fallsThrough, bodyGenerator) in builder.caseGenerators {
-            perform(BeginSwitchCase(fallsThrough: fallsThrough), withInputs: [val])
+        precondition(!builder.caseGenerators.isEmpty, "Must generate at least one switch case")
+
+        let (val, _, bodyGenerator) = builder.caseGenerators.first!
+        let inputs = val == nil ? [switchVar] : [switchVar, val!]
+        perform(BeginSwitch(numArguments: inputs.count), withInputs: inputs)
+        bodyGenerator()
+
+        for (val, fallsThrough, bodyGenerator) in builder.caseGenerators.dropFirst() {
+            let inputs = val == nil ? [] : [val!]
+            perform(BeginSwitchCase(numArguments: inputs.count, fallsThrough: fallsThrough), withInputs: inputs)
             bodyGenerator()
         }
         perform(EndSwitch())
+    }
+
+    public func switchBreak() {
+        perform(SwitchBreak())
     }
 
     public func whileLoop(_ lhs: Variable, _ comparator: Comparator, _ rhs: Variable, _ body: () -> Void) {
@@ -1505,8 +1529,14 @@ public class ProgramBuilder {
         perform(EndForOf())
     }
 
-    public func doBreak() {
-        perform(Break(), withInputs: [])
+    public func forOfLoop(_ obj: Variable, selecting indices: [Int], hasRestElement: Bool = false, _ body: ([Variable]) -> ()) {
+        let instr = perform(BeginForOfWithDestruct(indices: indices, hasRestElement: hasRestElement), withInputs: [obj])
+        body(Array(instr.innerOutputs))
+        perform(EndForOf())
+    }
+
+    public func loopBreak() {
+        perform(LoopBreak())
     }
 
     public func doContinue() {

@@ -116,7 +116,7 @@ class LifterTests: XCTestCase {
         XCTAssertEqual(fuzzer.lifter.lift(b.finalize()), expectedCode)
     }
 
-    func testNestedCodeStrings(){
+    func testNestedCodeStrings() {
         let fuzzer = makeMockFuzzer()
         let b = fuzzer.makeBuilder()
 
@@ -182,7 +182,7 @@ class LifterTests: XCTestCase {
 
     }
 
-    func testConsecutiveNestedCodeStrings(){
+    func testConsecutiveNestedCodeStrings() {
         let fuzzer = makeMockFuzzer()
         let b = fuzzer.makeBuilder()
 
@@ -277,7 +277,7 @@ class LifterTests: XCTestCase {
         XCTAssertEqual(lifted_program, expected_program)
     }
 
-    func testBlockStatements(){
+    func testBlockStatements() {
         let fuzzer = makeMockFuzzer()
         let b = fuzzer.makeBuilder()
 
@@ -316,7 +316,7 @@ class LifterTests: XCTestCase {
         XCTAssertEqual(lifted_program,expected_program)
     }
 
-    func testAsyncGeneratorLifting(){
+    func testAsyncGeneratorLifting() {
         let fuzzer = makeMockFuzzer()
         let b = fuzzer.makeBuilder()
 
@@ -370,7 +370,7 @@ class LifterTests: XCTestCase {
         XCTAssertEqual(lifted_program,expected_program)
     }
 
-    func testHoleyArrayLifting(){
+    func testHoleyArrayLifting() {
         let fuzzer = makeMockFuzzer()
         let b = fuzzer.makeBuilder()
 
@@ -408,7 +408,7 @@ class LifterTests: XCTestCase {
 
     }
 
-    func testTryCatchFinallyLifting(){
+    func testTryCatchFinallyLifting() {
         let fuzzer = makeMockFuzzer()
         let b = fuzzer.makeBuilder()
 
@@ -453,7 +453,7 @@ class LifterTests: XCTestCase {
         XCTAssertEqual(lifted_program,expected_program)
     }
 
-    func testTryCatchLifting(){
+    func testTryCatchLifting() {
         let fuzzer = makeMockFuzzer()
         let b = fuzzer.makeBuilder()
 
@@ -490,7 +490,7 @@ class LifterTests: XCTestCase {
         XCTAssertEqual(lifted_program,expected_program)
     }
 
-    func testTryFinallyLifting(){
+    func testTryFinallyLifting() {
         let fuzzer = makeMockFuzzer()
         let b = fuzzer.makeBuilder()
 
@@ -527,7 +527,7 @@ class LifterTests: XCTestCase {
         XCTAssertEqual(lifted_program,expected_program)
     }
 
-    func testComputedMethodLifting(){
+    func testComputedMethodLifting() {
         let fuzzer = makeMockFuzzer()
         let b = fuzzer.makeBuilder()
 
@@ -550,7 +550,7 @@ class LifterTests: XCTestCase {
         XCTAssertEqual(lifted_program,expected_program)
     }
 
-    func testConditionalOperationLifting(){
+    func testConditionalOperationLifting() {
         let fuzzer = makeMockFuzzer()
         let b = fuzzer.makeBuilder()
 
@@ -573,7 +573,7 @@ class LifterTests: XCTestCase {
         XCTAssertEqual(lifted_program,expected_program)
     }
 
-    func testSwitchStatementLifting(){
+    func testSwitchStatementLifting() {
         let fuzzer = makeMockFuzzer()
         let b = fuzzer.makeBuilder()
 
@@ -585,16 +585,16 @@ class LifterTests: XCTestCase {
         let v5 = b.loadFloat(13.37)
 
         b.doSwitch(on: v2) { cases in
-            cases.addDefault {
-                b.storeProperty(v5, as: "foo", on: v1)
-            }
-            cases.add(v3, fallsThrough: false){
+            cases.add(v3, previousCaseFallsThrough: false) {
                 b.storeProperty(v3, as: "bar", on: v1)
             }
-            cases.add(v4, fallsThrough: true){
+            cases.add(v4, previousCaseFallsThrough: false){
                 b.storeProperty(v4, as: "baz", on: v1)
             }
-            cases.add(v0, fallsThrough: false) {
+            cases.addDefault(previousCaseFallsThrough: false){
+                b.storeProperty(v5, as: "foo", on: v1)
+            }
+            cases.add(v0, previousCaseFallsThrough: true) {
                 b.storeProperty(v2, as: "bla", on: v1)
             }
         }
@@ -606,14 +606,14 @@ class LifterTests: XCTestCase {
         const v1 = {"foo":42};
         const v2 = v1.foo;
         switch (v2) {
-        default:
-            v1.foo = 13.37;
-            break;
         case 1337:
             v1.bar = 1337;
+            break;
         case "42":
             v1.baz = "42";
             break;
+        default:
+            v1.foo = 13.37;
         case 42:
             v1.bla = v2;
         }
@@ -623,7 +623,7 @@ class LifterTests: XCTestCase {
         XCTAssertEqual(lifted_program,expected_program)
     }
 
-    func testBinaryOperationReassignLifting(){
+    func testBinaryOperationReassignLifting() {
         let fuzzer = makeMockFuzzer()
         let b = fuzzer.makeBuilder()
 
@@ -688,7 +688,7 @@ class LifterTests: XCTestCase {
         XCTAssertEqual(lifted_program,expected_program)
     }
 
-    func testCreateTemplateLifting(){
+    func testCreateTemplateLifting() {
         let fuzzer = makeMockFuzzer()
         let b = fuzzer.makeBuilder()
 
@@ -715,7 +715,7 @@ class LifterTests: XCTestCase {
         XCTAssertEqual(lifted_program,expected_program)
     }
 
-    func testDeleteOpsLifting(){
+    func testDeleteOpsLifting() {
         let fuzzer = makeMockFuzzer()
         let b = fuzzer.makeBuilder()
 
@@ -747,7 +747,7 @@ class LifterTests: XCTestCase {
         XCTAssertEqual(lifted_program,expected_program)
     }
     
-    func testStrictFunctionLifting(){
+    func testStrictFunctionLifting() {
         let fuzzer = makeMockFuzzer()
         let b = fuzzer.makeBuilder()
 
@@ -804,7 +804,7 @@ class LifterTests: XCTestCase {
         XCTAssertEqual(lifted_program,expected_program)
     }
 
-    func testRegExpInline(){
+    func testRegExpInline() {
         let fuzzer = makeMockFuzzer()
         let b = fuzzer.makeBuilder()
 
@@ -828,7 +828,7 @@ class LifterTests: XCTestCase {
     }
 
     
-    func testCallMethodWithSpreadLifting(){
+    func testCallMethodWithSpreadLifting() {
         let fuzzer = makeMockFuzzer()
         let b = fuzzer.makeBuilder()
 
@@ -859,7 +859,7 @@ class LifterTests: XCTestCase {
         XCTAssertEqual(lifted_program,expected_program)
     }
 
-    func testCallComputedMethodWithSpreadLifting(){
+    func testCallComputedMethodWithSpreadLifting() {
         let fuzzer = makeMockFuzzer()
         let b = fuzzer.makeBuilder()
 
@@ -892,7 +892,7 @@ class LifterTests: XCTestCase {
         XCTAssertEqual(lifted_program,expected_program)
     }
 
-    func testConstructWithSpreadLifting(){
+    func testConstructWithSpreadLifting() {
         let fuzzer = makeMockFuzzer()
         let b = fuzzer.makeBuilder()
 
@@ -919,7 +919,7 @@ class LifterTests: XCTestCase {
         XCTAssertEqual(lifted_program,expected_program)
     }
 
-    func testCallWithSpreadLifting(){
+    func testCallWithSpreadLifting() {
         let fuzzer = makeMockFuzzer()
         let b = fuzzer.makeBuilder()
 
@@ -1091,6 +1091,104 @@ class LifterTests: XCTestCase {
 
         XCTAssertEqual(lifted_program,expected_program)
     }
+
+    func testForLoopWithArrayDestructLifting() {
+        let fuzzer = makeMockFuzzer()
+        let b = fuzzer.makeBuilder()
+        let v0 = b.loadInt(10)
+        let v1 = b.createArray(with: [v0,v0,v0])
+        let v2 = b.loadInt(20)
+        let v3 = b.createArray(with: [v2,v2,v2])
+        let v4 = b.createArray(with: [v1,v3])
+
+        b.forOfLoop(v4, selecting: [0,2], hasRestElement: true) { args in
+            let v8 = b.binary(args[0], b.loadInt(30), with: BinaryOperator.Add)
+            let v9 = b.callMethod("push", on: args[1], withArgs: [v8])
+            b.forOfLoop(v9) { arg in
+                b.binary(arg, b.loadFloat(4.0), with: BinaryOperator.Sub)
+            }
+            b.forOfLoop(v4, selecting: [1]) { _ in
+            }
+        }
+
+        let program = b.finalize()
+        let lifted_program = fuzzer.lifter.lift(program)
+        let expected_program = """
+        const v1 = [10,10,10];
+        const v3 = [20,20,20];
+        const v4 = [v1,v3];
+        for (let [v5,,...v6] of v4) {
+            const v8 = v5 + 30;
+            const v9 = v6.push(v8);
+            for (const v10 of v9) {
+                const v12 = v10 - 4.0;
+            }
+            for (let [,v13] of v4) {
+            }
+        }
+
+        """
+
+        XCTAssertEqual(lifted_program,expected_program)
+    }
+
+    func testObjectDestructLifting() {
+        let fuzzer = makeMockFuzzer()
+        let b = fuzzer.makeBuilder()
+
+        let v0 = b.loadInt(42)
+        let v1 = b.loadFloat(13.37)
+        let v2 = b.createObject(with: ["foo": v0, "bar": v1])
+
+        b.destruct(v2, selecting: ["foo"], hasRestElement: true)
+        b.destruct(v2, selecting: ["foo", "bar"], hasRestElement: true)
+        b.destruct(v2, selecting: [String](), hasRestElement: true)
+        b.destruct(v2, selecting: ["foo", "bar"])
+
+        let program = b.finalize()
+        let lifted_program = fuzzer.lifter.lift(program)
+        let expected_program = """
+        const v2 = {"bar":13.37,"foo":42};
+        let {"foo":v3,...v4} = v2;
+        let {"foo":v5,"bar":v6,...v7} = v2;
+        let {...v8} = v2;
+        let {"foo":v9,"bar":v10,} = v2;
+
+        """
+
+        XCTAssertEqual(lifted_program,expected_program)
+    }
+
+    func testObjectDestructAndReassignLifting() {
+        let fuzzer = makeMockFuzzer()
+        let b = fuzzer.makeBuilder()
+
+        let v0 = b.loadInt(42)
+        let v1 = b.loadFloat(13.37)
+        let v2 = b.loadString("Hello")
+        let v3 = b.createObject(with: ["foo": v0, "bar": v1])
+
+        b.destruct(v3, selecting: ["foo"], into: [v2,v0], hasRestElement: true)
+        b.destruct(v3, selecting: ["foo", "bar"], into: [v2,v0,v1], hasRestElement: true)
+        b.destruct(v3, selecting: [String](), into: [v2], hasRestElement: true)
+        b.destruct(v3, selecting: ["foo", "bar"], into: [v2,v1])
+
+        let program = b.finalize()
+        let lifted_program = fuzzer.lifter.lift(program)
+        let expected_program = """
+        let v0 = 42;
+        let v1 = 13.37;
+        let v2 = "Hello";
+        const v3 = {"bar":v1,"foo":v0};
+        ({"foo":v2,...v0} = v3);
+        ({"foo":v2,"bar":v0,...v1} = v3);
+        ({...v2} = v3);
+        ({"foo":v2,"bar":v1,} = v3);
+        
+        """
+
+        XCTAssertEqual(lifted_program,expected_program)
+    }
 }
 
 extension LifterTests {
@@ -1123,8 +1221,11 @@ extension LifterTests {
             ("testCallWithSpreadLifting", testCallWithSpreadLifting),
             ("testPropertyAndElementWithBinopLifting", testPropertyAndElementWithBinopLifting),
             ("testSuperPropertyWithBinopLifting", testSuperPropertyWithBinopLifting),
-            ("testArrayDestructLifting",testArrayDestructLifting),
+            ("testArrayDestructLifting", testArrayDestructLifting),
             ("testArrayDestructAndReassignLifting", testArrayDestructAndReassignLifting),
+            ("testForLoopWithArrayDestructLifting", testForLoopWithArrayDestructLifting),
+            ("testObjectDestructLifting", testObjectDestructLifting),
+            ("testArrayDestructAndReassignLifting", testObjectDestructAndReassignLifting),
         ]
     }
 }

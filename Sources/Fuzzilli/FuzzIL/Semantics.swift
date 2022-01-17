@@ -49,7 +49,8 @@ extension Operation {
             return inputIdx == 0
         case let op as UnaryOperation:
             return op.op.reassignsInput
-        case is DestructArrayAndReassign:
+        case is DestructArrayAndReassign,
+             is DestructObjectAndReassign:
             return inputIdx != 0
         default:
             return false
@@ -166,7 +167,8 @@ extension Operation {
             return endOp is EndFor
         case is BeginForIn:
             return endOp is EndForIn
-        case is BeginForOf:
+        case is BeginForOf,
+            is BeginForOfWithDestruct:
             return endOp is EndForOf
         case is BeginTry:
             return endOp is BeginCatch || endOp is BeginFinally

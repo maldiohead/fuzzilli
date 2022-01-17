@@ -419,6 +419,43 @@ public let CodeGenerators: [CodeGenerator] = [
         b.destruct(arr, selecting: indices, into: candidates, hasRestElement: probability(0.2))
     },
 
+    CodeGenerator("DestructObjectGenerator", input: .object()) { b, obj in
+        var properties = Set<String>()
+        for _ in 0..<Int.random(in: 2...6) {
+            if let prop = b.type(of: obj).properties.randomElement(), !properties.contains(prop) {
+                properties.insert(prop)
+            } else {
+                properties.insert(b.genPropertyNameForRead())
+            }
+        }
+
+        let hasRestElement = probability(0.2)
+
+        b.destruct(obj, selecting: properties.sorted(), hasRestElement: hasRestElement)
+    },
+
+    CodeGenerator("DestructObjectAndReassignGenerator", input: .object()) { b, obj in
+        var properties = Set<String>()
+        for _ in 0..<Int.random(in: 2...6) {
+            if let prop = b.type(of: obj).properties.randomElement(), !properties.contains(prop) {
+                properties.insert(prop)
+            } else {
+                properties.insert(b.genPropertyNameForRead())
+            }
+        }
+
+        var candidates = properties.map{ _ in
+            b.randVar()
+        }
+
+        let hasRestElement = probability(0.2)
+        if hasRestElement {
+            candidates.append(b.randVar())
+        }
+
+        b.destruct(obj, selecting: properties.sorted(), into: candidates, hasRestElement: hasRestElement)
+    },
+
     CodeGenerator("ComparisonGenerator", inputs: (.anything, .anything)) { b, lhs, rhs in
         b.compare(lhs, rhs, with: chooseUniform(from: allComparators))
     },
@@ -527,16 +564,36 @@ public let CodeGenerators: [CodeGenerator] = [
     },
 
     CodeGenerator("SwitchCaseGenerator", input: .anything) { b, cond in
+        var candidates: [Variable] = []
+
+        // Generate a minimum of three cases (including a potential default case)
+        for _ in 0..<Int.random(in: 3...8) {
+            candidates.append(b.randVar())
+        }
+
+        // If this is set, the selected candidate becomes the default case
+        var defaultCasePosition = -1
+        if probability(0.8) {
+            defaultCasePosition = Int.random(in: 0..<candidates.count)
+        }
+
         b.doSwitch(on: cond) { cases in
-            cases.addDefault {
-                b.generateRecursive()
-            }
-            for _ in 0..<Int.random(in: 0...5) {
-                cases.add(b.randVar(), fallsThrough: probability(0.1)) {
-                    b.generateRecursive()
+            for (idx, val) in candidates.enumerated() {
+                if idx == defaultCasePosition {
+                    cases.addDefault(previousCaseFallsThrough: probability(0.1)) {
+                        b.generateRecursive()
+                    }
+                } else {
+                    cases.add(val, previousCaseFallsThrough: probability(0.1)) {
+                        b.generateRecursive()
+                    }
                 }
             }
         }
+    },
+
+    CodeGenerator("SwitchCaseBreakGenerator", inContext: .switchCase) { b in
+        b.switchBreak()
     },
 
     CodeGenerator("WhileLoopGenerator") { b in
@@ -578,9 +635,27 @@ public let CodeGenerators: [CodeGenerator] = [
         }
     },
 
-    CodeGenerator("BreakGenerator", inContext: .loop) { b in
-        assert(b.context.contains(.loop))
-        b.doBreak()
+    CodeGenerator("ForOfWithDestructLoopGenerator", input: .iterable) { b, obj in
+        // Don't run this generator in conservative mode, until we can track array element types
+        guard b.mode != .conservative else { return }
+        var indices: [Int] = []
+        for idx in 0..<Int.random(in: 1..<5) {
+            withProbability(0.8) {
+                indices.append(idx)
+            }
+        }
+
+        if indices.isEmpty {
+            indices = [0]
+        }
+        
+        b.forOfLoop(obj, selecting: indices, hasRestElement: probability(0.2)) { _ in
+            b.generateRecursive()
+        }
+    },
+
+    CodeGenerator("LoopBreakGenerator", inContext: .loop) { b in
+        b.loopBreak()
     },
 
     CodeGenerator("ContinueGenerator", inContext: .loop) { b in

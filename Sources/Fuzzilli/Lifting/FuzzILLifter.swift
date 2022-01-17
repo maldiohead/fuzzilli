@@ -40,6 +40,20 @@ public class FuzzILLifter: Lifter {
             return arrayPattern
         }
 
+        func liftObjectDestructPattern(properties: [String], outputs: [String], hasRestElement: Bool) -> String {
+            assert(outputs.count == properties.count + (hasRestElement ? 1 : 0))
+
+            var objectPattern = ""
+            for (property, output) in zip(properties, outputs) {
+                objectPattern += "\(property):\(output),"
+            }
+            if hasRestElement {
+                objectPattern += "...\(outputs.last!)"
+            }
+
+            return objectPattern
+        }
+
         switch instr.op {
         case let op as LoadInteger:
             w.emit("\(instr.output) <- LoadInteger '\(op.value)'")
@@ -178,10 +192,6 @@ public class FuzzILLifter: Lifter {
         case is Await:
             w.emit("\(instr.output) <- Await \(input(0))")
 
-        case is CallFunction:
-            let arguments = instr.inputs.dropFirst().map({ $0.identifier })
-            w.emit("\(instr.output) <- CallFunction \(input(0)), [\(arguments.joined(separator: ", "))]")
-
         case let op as CallMethod:
             var arguments = [String]()
             for (i, v) in instr.inputs.dropFirst().enumerated() {
@@ -253,6 +263,14 @@ public class FuzzILLifter: Lifter {
             let outputs = instr.inputs.dropFirst().map({ $0.identifier })        
             w.emit("[\(liftArrayPattern(indices: op.indices, outputs: outputs, hasRestElement: op.hasRestElement))] <- DestructArrayAndReassign \(input(0))")
 
+        case let op as DestructObject:
+            let outputs = instr.outputs.map({ $0.identifier })
+            w.emit("{\(liftObjectDestructPattern(properties: op.properties, outputs: outputs, hasRestElement: op.hasRestElement))} <- DestructObject \(input(0))")
+
+        case let op as DestructObjectAndReassign:
+            let outputs = instr.inputs.dropFirst().map({ $0.identifier })  
+            w.emit("{\(liftObjectDestructPattern(properties: op.properties, outputs: outputs, hasRestElement: op.hasRestElement))} <- DestructObjectAndReassign \(input(0))")
+
         case let op as Compare:
             w.emit("\(instr.output) <- Compare \(input(0)), '\(op.op.token)', \(input(1))")
 
@@ -293,17 +311,13 @@ public class FuzzILLifter: Lifter {
             w.decreaseIndentionLevel()
             w.emit("EndIf")
 
-        case is BeginSwitch:
-            w.emit("BeginSwitch \(input(0))")
-            w.emit("DefaultCase")
+        case let op as BeginSwitch:
+            w.emit("BeginSwitch \(input(0))\(op.isDefaultCase ? "" : input(1).description)")
             w.increaseIndentionLevel()
 
         case let op as BeginSwitchCase:
-            if !op.fallsThrough {
-                w.emit ("Break")
-            }
             w.decreaseIndentionLevel()
-            w.emit("BeginSwitchCase \(input(0))")
+            w.emit("BeginSwitchCase \(op.isDefaultCase ? "" : input(0).description) \(op.previousCaseFallsThrough ? "previousCaseFallsThrough" : "")")
             w.increaseIndentionLevel()
 
         case is EndSwitch:
@@ -330,8 +344,15 @@ public class FuzzILLifter: Lifter {
            w.decreaseIndentionLevel()
            w.emit("EndClassDefinition")
 
-       case is CallSuperConstructor:
-           let arguments = instr.inputs.map({ $0.identifier })
+       case let op as CallSuperConstructor:
+           var arguments = [String]()
+           for (i, v) in instr.inputs.enumerated() {
+               if op.spreads[i] {
+                   arguments.append("...\(v.identifier)")
+               } else {
+                   arguments.append(v.identifier)
+               }
+           }
            w.emit("CallSuperConstructor [\(arguments.joined(separator: ", "))]")
 
        case let op as CallSuperMethod:
@@ -387,11 +408,17 @@ public class FuzzILLifter: Lifter {
             w.emit("BeginForOf \(input(0)) -> \(instr.innerOutput)")
             w.increaseIndentionLevel()
 
+        case let op as BeginForOfWithDestruct:
+            let outputs = instr.innerOutputs.map({ $0.identifier })
+            w.emit(" BeginForOf \(input(0)) -> [\(liftArrayPattern(indices: op.indices, outputs: outputs, hasRestElement: op.hasRestElement))]")
+            w.increaseIndentionLevel()
+
         case is EndForOf:
             w.decreaseIndentionLevel()
             w.emit("EndForOf")
 
-        case is Break:
+        case is LoopBreak,
+             is SwitchBreak:
             w.emit("Break")
 
         case is Continue:

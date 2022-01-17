@@ -131,6 +131,20 @@ public class JavaScriptLifter: Lifter {
                 return arrayPattern
             }
 
+            func liftObjectDestructPattern(properties: [String], outputs: [String], hasRestElement: Bool) -> String {
+                assert(outputs.count == properties.count + (hasRestElement ? 1 : 0))
+
+                var objectPattern = ""
+                for (property, output) in zip(properties, outputs) {
+                    objectPattern += "\"\(property)\":\(output),"
+                }
+                if hasRestElement {
+                    objectPattern += "...\(outputs.last!)"
+                }
+
+                return objectPattern
+            }
+
             // Helper functions to lift a function definition
             func liftFunctionDefinitionParameters(_ op: BeginAnyFunctionDefinition) -> String {
                 assert(instr.op === op)
@@ -443,6 +457,14 @@ public class JavaScriptLifter: Lifter {
                 let outputs = instr.inputs.dropFirst().map({ $0.identifier })
                 w.emit("[\(liftArrayPattern(indices: op.indices, outputs: outputs, hasRestElement: op.hasRestElement))] = \(input(0));")
 
+            case let op as DestructObject:
+                let outputs = instr.outputs.map({ $0.identifier })
+                w.emit("\(varDecl) {\(liftObjectDestructPattern(properties: op.properties, outputs: outputs, hasRestElement: op.hasRestElement))} = \(input(0));")
+
+            case let op as DestructObjectAndReassign:
+                let outputs = instr.inputs.dropFirst().map({ $0.identifier })
+                w.emit("({\(liftObjectDestructPattern(properties: op.properties, outputs: outputs, hasRestElement: op.hasRestElement))} = \(input(0)));")
+
             case let op as Compare:
                 output = BinaryExpression.new() <> input(0) <> " " <> op.op.token <> " " <> input(1)
 
@@ -517,8 +539,15 @@ public class JavaScriptLifter: Lifter {
                 w.decreaseIndentionLevel()
                 w.emit("};")
 
-            case is CallSuperConstructor:
-                let arguments = instr.inputs.map({ expr(for: $0).text })
+            case let op as CallSuperConstructor:
+                var arguments = [String]()
+                for (i, v) in instr.inputs.enumerated() {
+                    if op.spreads[i] {
+                        arguments.append("..." + expr(for: v).text)
+                    } else {
+                        arguments.append(expr(for: v).text)
+                    }
+                }
                 w.emit(CallExpression.new() <> "super(" <> arguments.joined(separator: ",") <> ")")
 
             case let op as CallSuperMethod:
@@ -549,17 +578,25 @@ public class JavaScriptLifter: Lifter {
                 w.decreaseIndentionLevel()
                 w.emit("}")
 
-            case is BeginSwitch:
+            case let op as BeginSwitch:
                 w.emit("switch (\(input(0))) {")
-                w.emit("default:")
+                if op.isDefaultCase {
+                    w.emit("default:")
+                } else {
+                    w.emit("case \(input(1)):")
+                }
                 w.increaseIndentionLevel()
 
             case let op as BeginSwitchCase:
-                if !op.fallsThrough {
+                if !op.previousCaseFallsThrough {
                     w.emit("break;")
                 }
                 w.decreaseIndentionLevel()
-                w.emit("case \(input(0)):")
+                if op.isDefaultCase {
+                    w.emit("default:")
+                } else {
+                    w.emit("case \(input(0)):")
+                }
                 w.increaseIndentionLevel()
 
             case is EndSwitch:
@@ -618,11 +655,17 @@ public class JavaScriptLifter: Lifter {
                 w.emit("for (\(decl(instr.innerOutput)) of \(input(0))) {")
                 w.increaseIndentionLevel()
 
+            case let op as BeginForOfWithDestruct:
+                let outputs = instr.innerOutputs.map({ $0.identifier })
+                w.emit("for (\(varDecl) [\(liftArrayPattern(indices: op.indices, outputs: outputs, hasRestElement: op.hasRestElement))] of \(input(0))) {")
+                w.increaseIndentionLevel()
+
             case is EndForOf:
                 w.decreaseIndentionLevel()
                 w.emit("}")
 
-            case is Break:
+            case is LoopBreak,
+                is SwitchBreak:
                 w.emit("break;")
 
             case is Continue:

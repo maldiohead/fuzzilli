@@ -424,7 +424,7 @@ class BeginAnyFunctionDefinition: Operation {
         super.init(numInputs: 0,
                    numOutputs: 1,
                    numInnerOutputs: signature.inputTypes.count,
-                   attributes: [.isBlockBegin], contextOpened: contextOpened)
+                   attributes: [.isParametric, .isBlockBegin], contextOpened: contextOpened)
     }
 }
 
@@ -661,8 +661,8 @@ class DestructArray: Operation {
     init(indices: [Int], hasRestElement: Bool) {
         assert(indices == indices.sorted(), "Indices must be sorted in ascending order")
         assert(indices.count == Set(indices).count, "Indices must not have duplicates")
-        self.hasRestElement = hasRestElement
         self.indices = indices
+        self.hasRestElement = hasRestElement
         super.init(numInputs: 1, numOutputs: indices.count)
     }
 }
@@ -679,6 +679,33 @@ class DestructArrayAndReassign: Operation {
         self.hasRestElement = hasRestElement
         // The first input is the array being destructed
         super.init(numInputs: 1 + indices.count, numOutputs: 0)
+    }
+}
+
+/// Destructs an object into n output variables
+class DestructObject: Operation {
+    let properties: [String]
+    let hasRestElement: Bool
+
+    init(properties: [String], hasRestElement: Bool) {
+        assert(!properties.isEmpty || hasRestElement, "Must have at least one output")
+        self.properties = properties
+        self.hasRestElement = hasRestElement
+        super.init(numInputs: 1, numOutputs: properties.count + (hasRestElement ? 1 : 0))
+    }
+}
+
+/// Destructs an object and reassigns the output to n existing variables
+class DestructObjectAndReassign: Operation {
+    let properties: [String]
+    let hasRestElement: Bool
+
+    init(properties: [String], hasRestElement:Bool) {
+        assert(!properties.isEmpty || hasRestElement, "Must have at least one input variable to reassign")
+        self.properties = properties
+        self.hasRestElement = hasRestElement
+        // The first input is the object being destructed
+        super.init(numInputs: 1 + properties.count + (hasRestElement ? 1 : 0), numOutputs: 0)
     }
 }
 
@@ -830,12 +857,15 @@ class EndClassDefinition: Operation {
 }
 
 class CallSuperConstructor: Operation {
+    let spreads: [Bool]
+
     var numArguments: Int {
         return numInputs
     }
 
-    init(numArguments: Int) {
-        super.init(numInputs: numArguments, numOutputs: 0, attributes: [.isCall, .isVarargs], requiredContext: [.script, .classDefinition])
+    init(numArguments: Int, spreads: [Bool]) {
+        self.spreads = spreads
+        super.init(numInputs: numArguments, numOutputs: 0, attributes: [.isCall, .isVarargs, .isParametric], requiredContext: [.script, .classDefinition])
     }
 }
 
@@ -909,20 +939,29 @@ class EndIf: ControlFlowOperation {
     }
 }
 
-/// The block content is the body of the default case
+/// The block content is the body of the first switch case
 class BeginSwitch: ControlFlowOperation {
-    init() {
-        super.init(numInputs: 1, attributes: [.isBlockBegin])
+
+    var isDefaultCase: Bool {
+        return numInputs == 1
+    }
+
+    init(numArguments: Int) {
+        super.init(numInputs: numArguments, attributes: [.isBlockBegin], contextOpened: [.script, .switchCase])
     }
 }
 
 class BeginSwitchCase: ControlFlowOperation {
     /// If true, causes the preceding case to fall through to it (and so no "break;" is emitted by the Lifter)
-    let fallsThrough: Bool
+    let previousCaseFallsThrough: Bool
 
-    init(fallsThrough: Bool) {
-        self.fallsThrough = fallsThrough
-        super.init(numInputs: 1, attributes: [.isBlockBegin, .isBlockEnd])
+    var isDefaultCase: Bool {
+        return numInputs == 0
+    }
+
+    init(numArguments: Int, fallsThrough: Bool) {
+        self.previousCaseFallsThrough = fallsThrough
+        super.init(numInputs: numArguments, attributes: [.isBlockBegin, .isBlockEnd], contextOpened: [.script, .switchCase])
     }
 }
 
@@ -999,15 +1038,33 @@ class BeginForOf: ControlFlowOperation {
     }
 }
 
+class BeginForOfWithDestruct: ControlFlowOperation {
+    let indices: [Int]
+    let hasRestElement: Bool
+
+    init(indices: [Int], hasRestElement: Bool) {
+        assert(indices.count >= 1)
+        self.indices = indices
+        self.hasRestElement = hasRestElement
+        super.init(numInputs: 1, numInnerOutputs: indices.count, attributes: [.isBlockBegin, .isLoopBegin], contextOpened: [.script, .loop])
+    }
+}
+
 class EndForOf: ControlFlowOperation {
     init() {
         super.init(numInputs: 0, attributes: [.isBlockEnd, .isLoopEnd])
     }
 }
 
-class Break: Operation {
+class LoopBreak: Operation {
     init() {
         super.init(numInputs: 0, numOutputs: 0, attributes: [.isJump], requiredContext: [.script, .loop])
+    }
+}
+
+class SwitchBreak: Operation {
+    init() {
+        super.init(numInputs: 0, numOutputs: 0, attributes: [.isJump], requiredContext: [.script, .switchCase])
     }
 }
 

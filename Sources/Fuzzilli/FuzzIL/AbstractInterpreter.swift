@@ -67,7 +67,7 @@ public struct AbstractInterpreter {
             state.pushSiblingState(typeChanges: &typeChanges)
         case is EndSwitch:
             state.mergeStates(typeChanges: &typeChanges)
-        case is BeginWhile, is BeginDoWhile, is BeginFor, is BeginForIn, is BeginForOf, is BeginAnyFunctionDefinition, is BeginCodeString:
+        case is BeginWhile, is BeginDoWhile, is BeginFor, is BeginForIn, is BeginForOf, is BeginForOfWithDestruct, is BeginAnyFunctionDefinition, is BeginCodeString:
             // Push empty state representing case when loop/function is not executed at all
             state.pushChildState()
             // Push state representing types during loop
@@ -482,6 +482,24 @@ public struct AbstractInterpreter {
         case is DestructArrayAndReassign:
             instr.inputs.dropFirst().forEach{set($0, .unknown)}
 
+        case let op as DestructObject:
+            for (property, output) in zip(op.properties, instr.outputs) {
+                set(output, inferPropertyType(of: property, on: instr.input(0)))
+            }
+            if op.hasRestElement {
+                // TODO: Add the subset of object properties and methods captured by the rest element
+                set(instr.outputs.last!, environment.objectType)
+            }
+
+        case let op as DestructObjectAndReassign:
+            for (property, input) in zip(op.properties, instr.inputs.dropFirst()) {
+                set(input, inferPropertyType(of: property, on: instr.input(0)))
+            }
+            if op.hasRestElement {
+                // TODO: Add the subset of object properties and methods captured by the rest element
+                set(instr.inputs.last!, environment.objectType)
+            }
+
         case is Compare:
             set(instr.output, .boolean)
 
@@ -525,6 +543,11 @@ public struct AbstractInterpreter {
 
         case is BeginForOf:
             set(instr.innerOutput, .unknown)
+
+        case is BeginForOfWithDestruct:
+            instr.innerOutputs.forEach {
+                set($0, .unknown)
+            }
 
         case is BeginCatch:
             set(instr.innerOutput, .unknown)

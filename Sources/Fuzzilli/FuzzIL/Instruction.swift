@@ -421,6 +421,16 @@ extension Instruction: ProtobufConvertible {
                     $0.indices = op.indices.map({ Int32($0) })
                     $0.hasRestElement_p = op.hasRestElement 
                 }
+            case let op as DestructObject:
+                $0.destructObject = Fuzzilli_Protobuf_DestructObject.with {
+                    $0.properties = op.properties
+                    $0.hasRestElement_p = op.hasRestElement
+                }
+            case let op as DestructObjectAndReassign:
+                $0.destructObjectAndReassign = Fuzzilli_Protobuf_DestructObjectAndReassign.with {
+                    $0.properties = op.properties
+                    $0.hasRestElement_p = op.hasRestElement
+                }
             case let op as Compare:
                 $0.compare = Fuzzilli_Protobuf_Compare.with { $0.op = convertEnum(op.op, allComparators) }
             case is ConditionalOperation:
@@ -439,8 +449,8 @@ extension Instruction: ProtobufConvertible {
                 $0.beginMethodDefinition = Fuzzilli_Protobuf_BeginMethodDefinition.with { $0.numParameters = UInt32(op.numParameters) }
             case is EndClassDefinition:
                 $0.endClassDefinition = Fuzzilli_Protobuf_EndClassDefinition()
-            case is CallSuperConstructor:
-                $0.callSuperConstructor = Fuzzilli_Protobuf_CallSuperConstructor()
+            case let op as CallSuperConstructor:
+                $0.callSuperConstructor = Fuzzilli_Protobuf_CallSuperConstructor.with { $0.spreads = op.spreads }
             case let op as CallSuperMethod:
                 $0.callSuperMethod = Fuzzilli_Protobuf_CallSuperMethod.with { $0.methodName = op.methodName }
             case let op as LoadSuperProperty:
@@ -469,7 +479,9 @@ extension Instruction: ProtobufConvertible {
             case is BeginSwitch:
                 $0.beginSwitch = Fuzzilli_Protobuf_BeginSwitch()
             case let op as BeginSwitchCase:
-                $0.beginSwitchCase = Fuzzilli_Protobuf_BeginSwitchCase.with { $0.fallsThrough = op.fallsThrough }
+                $0.beginSwitchCase = Fuzzilli_Protobuf_BeginSwitchCase.with { $0.previousCaseFallsThrough = op.previousCaseFallsThrough }
+            case is SwitchBreak:
+                $0.switchBreak = Fuzzilli_Protobuf_SwitchBreak()
             case is EndSwitch:
                 $0.endSwitch = Fuzzilli_Protobuf_EndSwitch()
             case let op as BeginWhile:
@@ -493,10 +505,15 @@ extension Instruction: ProtobufConvertible {
                 $0.endForIn = Fuzzilli_Protobuf_EndForIn()
             case is BeginForOf:
                 $0.beginForOf = Fuzzilli_Protobuf_BeginForOf()
+            case let op as BeginForOfWithDestruct:
+                $0.beginForOfWithDestruct = Fuzzilli_Protobuf_BeginForOfWithDestruct.with {
+                    $0.indices = op.indices.map({ Int32($0) })
+                    $0.hasRestElement_p = op.hasRestElement
+                }
             case is EndForOf:
                 $0.endForOf = Fuzzilli_Protobuf_EndForOf()
-            case is Break:
-                $0.break = Fuzzilli_Protobuf_Break()
+            case is LoopBreak:
+                $0.loopBreak = Fuzzilli_Protobuf_LoopBreak()
             case is Continue:
                 $0.continue = Fuzzilli_Protobuf_Continue()
             case is BeginTry:
@@ -672,6 +689,10 @@ extension Instruction: ProtobufConvertible {
             op = DestructArray(indices: p.indices.map({ Int($0) }), hasRestElement: p.hasRestElement_p)
         case .destructArrayAndReassign(let p):
             op = DestructArrayAndReassign(indices: p.indices.map({ Int($0) }), hasRestElement: p.hasRestElement_p)
+        case .destructObject(let p):
+            op = DestructObject(properties: p.properties, hasRestElement: p.hasRestElement_p)
+        case .destructObjectAndReassign(let p):
+            op = DestructObjectAndReassign(properties: p.properties, hasRestElement: p.hasRestElement_p)
         case .compare(let p):
             op = Compare(try convertEnum(p.op, allComparators))
         case .conditionalOperation(_):
@@ -687,8 +708,8 @@ extension Instruction: ProtobufConvertible {
             op = BeginMethodDefinition(numParameters: Int(p.numParameters))
         case .endClassDefinition(_):
             op = EndClassDefinition()
-        case .callSuperConstructor(_):
-            op = CallSuperConstructor(numArguments: inouts.count)
+        case .callSuperConstructor(let p):
+            op = CallSuperConstructor(numArguments: inouts.count, spreads: p.spreads)
         case .callSuperMethod(let p):
             op = CallSuperMethod(methodName: p.methodName, numArguments: inouts.count - 1)
         case .loadSuperProperty(let p):
@@ -712,9 +733,11 @@ extension Instruction: ProtobufConvertible {
         case .endIf(_):
             op = EndIf()
         case .beginSwitch(_):
-            op = BeginSwitch()
+            op = BeginSwitch(numArguments: inouts.count)
         case .beginSwitchCase(let p):
-            op = BeginSwitchCase(fallsThrough: p.fallsThrough)
+            op = BeginSwitchCase(numArguments: inouts.count, fallsThrough: p.previousCaseFallsThrough)
+        case .switchBreak(_):
+            op = SwitchBreak()
         case .endSwitch(_):
             op = EndSwitch()
         case .beginWhile(let p):
@@ -735,10 +758,12 @@ extension Instruction: ProtobufConvertible {
             op = EndForIn()
         case .beginForOf(_):
             op = BeginForOf()
+        case .beginForOfWithDestruct(let p):
+            op = BeginForOfWithDestruct(indices: p.indices.map({ Int($0) }), hasRestElement: p.hasRestElement_p)
         case .endForOf(_):
             op = EndForOf()
-        case .break(_):
-            op = Break()
+        case .loopBreak(_):
+            op = LoopBreak()
         case .continue(_):
             op = Continue()
         case .beginTry(_):

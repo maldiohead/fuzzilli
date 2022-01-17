@@ -266,6 +266,16 @@ message DestructArrayAndReassign {
     bool hasRestElement = 2;
 }
 
+message DestructObject {
+    repeated string properties = 1;
+    bool hasRestElement = 2;
+}
+
+message DestructObjectAndReassign {
+    repeated string properties = 1;
+    bool hasRestElement = 2;
+}
+
 enum Comparator {
     EQUAL = 0;
     STRICT_EQUAL = 1;
@@ -304,6 +314,7 @@ message EndClassDefinition {
 }
 
 message CallSuperConstructor {
+    repeated bool spreads = 1;
 }
 
 message CallSuperMethod {
@@ -350,7 +361,10 @@ message BeginSwitch {
 }
 
 message BeginSwitchCase {
-    bool fallsThrough = 1;
+    bool previousCaseFallsThrough = 1;
+}
+
+message SwitchBreak {
 }
 
 message EndSwitch {
@@ -387,10 +401,15 @@ message EndForIn {
 message BeginForOf {
 }
 
+message BeginForOfWithDestruct {
+    repeated int32 indices = 1;
+    bool hasRestElement = 2;
+}
+
 message EndForOf {
 }
 
-message Break {
+message LoopBreak {
 }
 
 message Continue {

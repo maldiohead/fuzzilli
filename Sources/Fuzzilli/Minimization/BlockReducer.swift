@@ -21,7 +21,8 @@ struct BlockReducer: Reducer {
                  is BeginDoWhile,
                  is BeginFor,
                  is BeginForIn,
-                 is BeginForOf:
+                 is BeginForOf,
+                 is BeginForOfWithDestruct:
                 assert(group.numBlocks == 1)
                 reduceLoop(loop: group.block(0), in: &code, with: verifier)
 
@@ -76,7 +77,7 @@ struct BlockReducer: Reducer {
         for instr in loop.body() {
             analyzer.analyze(instr)
             // TODO instead have something like '&& instr.onlyValidInLoopBody`
-            if !analyzer.context.contains(.loop) && (instr.op is Break || instr.op is Continue) {
+            if !analyzer.context.contains(.loop) && (instr.op is LoopBreak || instr.op is Continue) {
                 candidates.append(instr.index)
             }
         }
