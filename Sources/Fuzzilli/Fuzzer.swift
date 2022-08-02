@@ -37,7 +37,9 @@ public class Fuzzer {
     public let runner: ScriptRunner
 
     /// The fuzzer engine producing new programs from existing ones and executing them.
-    public let engine: FuzzEngine
+    public private(set) var engine: FuzzEngine
+    /// During initial corpus generation, the current engine will be a GenerativeEngine while this will keep a reference to the "real" engine to use after corpus generation.
+    private var nextEngine: FuzzEngine?
 
     /// The active code generators. It is possible to change these (temporarily) at runtime. This is e.g. done by some ProgramTemplates.
     public var codeGenerators: WeightedList<CodeGenerator>
@@ -60,16 +62,28 @@ public class Fuzzer {
     /// The corpus of "interesting" programs found so far.
     public let corpus: Corpus
 
-    // Whether or not only deterministic samples should be included in the corpus
+    /// The minimizer to shrink programs that cause crashes or trigger new interesting behaviour.
+    public let minimizer: Minimizer
+
+    public enum Phase {
+        // Importing and minimizing an existing corpus
+        case corpusImport
+        // When starting with an empty corpus, we will do some initial corpus generation using the GenerativeEngine
+        case initialCorpusGeneration
+        // Regular fuzzing using the configured FuzzEngine
+        case fuzzing
+    }
+
+    /// The current phase of the fuzzer
+    public private(set) var phase: Phase = .fuzzing
+
+    /// Whether or not only deterministic samples should be included in the corpus
     private let deterministicCorpus: Bool
 
-    // The minimum and maximum number of times a sample should be executed when
-    // checking for deterministic edges
+    /// The minimum and maximum number of times a sample should be executed when
+    /// checking for deterministic edges
     private let minDeterminismExecs: Int
     private let maxDeterminismExecs: Int
-
-    // The minimizer to shrink programs that cause crashes or trigger new interesting behaviour.
-    public let minimizer: Minimizer
 
     /// The modules active on this fuzzer.
     var modules = [String: Module]()
@@ -89,6 +103,12 @@ public class Fuzzer {
     /// State management.
     private var maxIterations = -1
     private var iterations = 0
+    private var iterationOfLastInteratingSample = 0
+
+    private var iterationsSinceLastInterestingProgram: Int {
+        Assert(iterations >= iterationOfLastInteratingSample)
+        return iterations - iterationOfLastInteratingSample
+    }
 
     /// Fuzzer instances can be looked up from a dispatch queue through this key. See below.
     private static let dispatchQueueKey = DispatchSpecificKey<Fuzzer>()
@@ -115,7 +135,7 @@ public class Fuzzer {
         maxDeterminismExecs: Int, minimizer: Minimizer, queue: DispatchQueue? = nil
     ) {
         // Ensure collect runtime types mode is not enabled without abstract interpreter.
-        assert(!configuration.collectRuntimeTypes || configuration.useAbstractInterpretation)
+        Assert(!configuration.collectRuntimeTypes || configuration.useAbstractInterpretation)
 
         let uniqueId = UUID()
         self.id = uniqueId
@@ -169,8 +189,8 @@ public class Fuzzer {
 
     /// Adds a module to this fuzzer. Can only be called before the fuzzer is initialized.
     public func addModule(_ module: Module) {
-        assert(!isInitialized)
-        assert(modules[module.name] == nil)
+        Assert(!isInitialized)
+        Assert(modules[module.name] == nil)
         modules[module.name] = module
     }
 
@@ -181,7 +201,7 @@ public class Fuzzer {
     /// task may already be scheduled on this fuzzer's dispatch queue.
     public func initialize() {
         dispatchPrecondition(condition: .onQueue(queue))
-        assert(!isInitialized)
+        Assert(!isInitialized)
 
         // Initialize the script runner first so we are able to execute programs.
         runner.initialize(with: self)
@@ -230,32 +250,13 @@ public class Fuzzer {
         isInitialized = true
     }
 
-    /// The program used to seed the corpus for fuzzing if no programs are imported.
-    public func makeSeedProgram() -> Program {
-        let b = makeBuilder()
-        let objectConstructor = b.loadBuiltin("Object")
-        b.callFunction(objectConstructor, withArgs: [])
-        return b.finalize()
-    }
-
-    /// If the corpus is currently empty, this will add the seed program to it.
-    /// Necessary as various parts of the fuzzer assume that the corpus is always populated.
-    private func ensureCorpusIsPopulated() {
-        if corpus.isEmpty {
-            importProgram(makeSeedProgram(), origin: .corpusImport(shouldMinimize: false))
-            guard !corpus.isEmpty else {
-                logger.fatal("Corpus must not be empty for fuzzing and we failed to import the seed program. Is the evaluator working correctly?")
-            }
-        }
-    }
-
     /// Starts the fuzzer and runs for the specified number of iterations.
     ///
     /// This must be called after initializing the fuzzer.
     /// Use -1 for maxIterations to run indefinitely.
     public func start(runFor maxIterations: Int) {
         dispatchPrecondition(condition: .onQueue(queue))
-        assert(isInitialized)
+        Assert(isInitialized)
 
         self.maxIterations = maxIterations
 
@@ -267,9 +268,14 @@ public class Fuzzer {
     private func startFuzzing() {
         dispatchPrecondition(condition: .onQueue(queue))
 
-        // The corpus must not be empty during fuzzing.
-        ensureCorpusIsPopulated()
-        assert(!corpus.isEmpty)
+        // When starting with an empty corpus, perform initial corpus generation using the GenerativeEngine.
+        if corpus.isEmpty {
+            logger.info("Empty corpus detected. Switching to the GenerativeEngine to perform initial corpus generation")
+            phase = .initialCorpusGeneration
+            nextEngine = engine
+            engine = GenerativeEngine(programSize: 10)
+            engine.initialize(with: self)
+        }
 
         logger.info("Let's go!")
 
@@ -362,7 +368,7 @@ public class Fuzzer {
         /// All valid programs are added to the corpus. This is intended to aid in finding
         /// variants of existing bugs. Programs are not minimized before inclusion.
         case all
-        
+
         /// Only programs that increase coverage are included in the fuzzing corpus.
         /// These samples are intended as a solid starting point for the fuzzer.
         case interestingOnly(shouldMinimize: Bool)
@@ -382,7 +388,7 @@ public class Fuzzer {
             let execution = execute(program)
             guard execution.outcome == .succeeded else { continue }
             let maybeAspects = evaluator.evaluate(execution)
-            
+
             switch importMode {
             case .all:
                 processInteresting(program, havingAspects: ProgramAspects(outcome: .succeeded), origin: .corpusImport(shouldMinimize: false))
@@ -393,8 +399,10 @@ public class Fuzzer {
             }
         }
         if case .interestingOnly(let shouldMinimize) = importMode, shouldMinimize {
+            phase = .corpusImport
             fuzzGroup.notify(queue: queue) {
                 self.logger.info("Corpus import completed. Corpus now contains \(self.corpus.size) programs")
+                self.phase = .fuzzing
             }
         }
     }
@@ -458,7 +466,7 @@ public class Fuzzer {
     /// - Returns: An Execution structure representing the execution outcome.
     public func execute(_ program: Program, withTimeout timeout: UInt32? = nil) -> Execution {
         dispatchPrecondition(condition: .onQueue(queue))
-        assert(runner.isInitialized)
+        Assert(runner.isInitialized)
 
         let script = lifter.lift(program, withOptions: .minify)
 
@@ -492,7 +500,7 @@ public class Fuzzer {
 
     /// Collect and save runtime types of variables in program
     private func collectRuntimeTypes(for program: Program) {
-        assert(program.typeCollectionStatus == .notAttempted)
+        Assert(program.typeCollectionStatus == .notAttempted)
         let script = lifter.lift(program, withOptions: .collectTypes)
         let execution = runner.run(script, withTimeout: 30 * config.timeout)
         // JS prints lines alternating between variable name and its type
@@ -565,6 +573,8 @@ public class Fuzzer {
 
     /// Process a program that has interesting aspects.
     func processInteresting(_ program: Program, havingAspects aspects: ProgramAspects, origin: ProgramOrigin) {
+        iterationOfLastInteratingSample = iterations
+        
         // If only adding deterministic samples, execute each sample additional times to verify determinism
         // Each sample will be executed at least minDeterminismExecs, and no more than maxDeterminismExecs times
         // If two consecutive executions return the same edges after at least minDeterminismExecs times, the sample
@@ -603,7 +613,7 @@ public class Fuzzer {
         minimizer.withMinimizedCopy(program, withAspects: aspects, usingMode: .normal) { minimizedProgram in
             self.fuzzGroup.leave()
             // Minimization invalidates any existing runtime type information
-            assert(minimizedProgram.typeCollectionStatus == .notAttempted && !minimizedProgram.hasTypeInformation)
+            Assert(minimizedProgram.typeCollectionStatus == .notAttempted && !minimizedProgram.hasTypeInformation)
             finishProcessing(minimizedProgram)
         }
     }
@@ -617,7 +627,7 @@ public class Fuzzer {
                 program.comments.add("TERMSIG: \(termsig)\n", at: .footer)
                 program.comments.add("STDERR:\n" + stderr, at: .footer)
             }
-            assert(program.comments.at(.footer)?.contains("CRASH INFO") ?? false)
+            Assert(program.comments.at(.footer)?.contains("CRASH INFO") ?? false)
 
             // Check for uniqueness only after minimization
             let execution = execute(program, withTimeout: self.config.timeout * 2)
@@ -652,7 +662,7 @@ public class Fuzzer {
     /// Performs one round of fuzzing.
     private func fuzzOne() {
         dispatchPrecondition(condition: .onQueue(queue))
-        assert(config.isFuzzing)
+        Assert(config.isFuzzing)
 
         guard !self.isStopped else { return }
 
@@ -662,6 +672,27 @@ public class Fuzzer {
         iterations += 1
 
         engine.fuzzOne(fuzzGroup)
+
+        if phase == .initialCorpusGeneration {
+            // Perform initial corpus generation until we haven't found a new interesting sample in the last N
+            // iterations. The rough order of magnitude of N has been determined experimentally: run two instances with
+            // different values (e.g. 10 and 100) for roughly the same number of iterations (approximately until both
+            // have finished the initial corpus generation), then compare the corpus size and coverage.
+            // A worker instance is expected to obtain corpus samples from a master instance soon, so only perform
+            // lightweight initial corpus generation in that case.
+            let maxIterationsSinceLastInterestingProgram = config.isWorker ? 10 : 100
+            if iterationsSinceLastInterestingProgram > maxIterationsSinceLastInterestingProgram {
+                guard !corpus.isEmpty else {
+                    // We assume that 10 attempts will always be enough to generate at least one valid sample. Usually
+                    // it's enough to already generate a few hundred interesting samples.
+                    logger.fatal("Initial corpus generation failed, corpus is still empty. Is the evaluator working correctly?")
+                }
+                logger.info("Initial corpus generation finished. Corpus now contains \(corpus.size) elements")
+                engine = nextEngine!
+                nextEngine = nil
+                phase = .fuzzing
+            }
+        }
 
         // Do the next fuzzing iteration as soon as all tasks related to the current iteration are finished.
         fuzzGroup.notify(queue: queue) {
@@ -708,7 +739,7 @@ public class Fuzzer {
 
     /// Runs a number of startup tests to check whether everything is configured correctly.
     public func runStartupTests() {
-        assert(isInitialized)
+        Assert(isInitialized)
 
         // Check if we can execute programs
         var execution = execute(Program())

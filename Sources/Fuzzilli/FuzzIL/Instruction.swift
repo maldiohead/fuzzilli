@@ -58,13 +58,18 @@ public struct Instruction {
 
     /// Returns the ith input variable.
     public func input(_ i: Int) -> Variable {
-        assert(i < numInputs)
+        Assert(i < numInputs)
         return inouts_[i]
     }
 
     /// The input variables of this instruction.
     public var inputs: ArraySlice<Variable> {
         return inouts_[..<numInputs]
+    }
+    
+    /// The index of the first variadic input of this instruction.
+    public var firstVariadicInput: Int {
+        return op.firstVariadicInput
     }
 
     /// Whether this instruction has any outputs.
@@ -74,13 +79,13 @@ public struct Instruction {
 
     /// Convenience getter for simple operations that produce a single output variable.
     public var output: Variable {
-        assert(numOutputs == 1)
+        Assert(numOutputs == 1)
         return inouts_[numInputs]
     }
 
     /// Convenience getter for simple operations that produce a single inner output variable.
     public var innerOutput: Variable {
-        assert(numInnerOutputs == 1)
+        Assert(numInnerOutputs == 1)
         return inouts_[numInputs + numOutputs]
     }
 
@@ -150,8 +155,8 @@ public struct Instruction {
     }
 
     /// An instruction whose operation can have a variable number of inputs.
-    public var isVarargs: Bool {
-        return op.attributes.contains(.isVarargs)
+    public var isVariadic: Bool {
+        return op.attributes.contains(.isVariadic)
     }
 
     /// A block instruction is part of a block in the program.
@@ -197,7 +202,7 @@ public struct Instruction {
 
     /// Whether this instruction propagates contexts
     public var propagatesSurroundingContext: Bool {
-        assert(op.attributes.contains(.isBlockBegin))
+        Assert(op.attributes.contains(.isBlockBegin))
         return op.attributes.contains(.propagatesSurroundingContext)
     }
 
@@ -218,26 +223,26 @@ public struct Instruction {
     }
 
     public init(_ op: Operation, output: Variable, index: Int? = nil) {
-        assert(op.numInputs == 0 && op.numOutputs == 1 && op.numInnerOutputs == 0)
+        Assert(op.numInputs == 0 && op.numOutputs == 1 && op.numInnerOutputs == 0)
         self.init(op, inouts: [output], index: index)
     }
 
     public init(_ op: Operation, output: Variable, inputs: [Variable], index: Int? = nil) {
-        assert(op.numOutputs == 1)
-        assert(op.numInnerOutputs == 0)
-        assert(op.numInputs == inputs.count)
+        Assert(op.numOutputs == 1)
+        Assert(op.numInnerOutputs == 0)
+        Assert(op.numInputs == inputs.count)
         self.init(op, inouts: inputs + [output], index: index)
     }
 
     public init(_ op: Operation, inputs: [Variable], index: Int? = nil) {
-        assert(op.numOutputs + op.numInnerOutputs == 0)
-        assert(op.numInputs == inputs.count)
+        Assert(op.numOutputs + op.numInnerOutputs == 0)
+        Assert(op.numInputs == inputs.count)
         self.init(op, inouts: inputs, index: index)
     }
 
     public init(_ op: Operation, index: Int? = nil) {
-        assert(op.numOutputs == 0)
-        assert(op.numInputs == 0)
+        Assert(op.numOutputs == 0)
+        Assert(op.numInputs == 0)
         self.init(op, inouts: [], index: index)
     }
 }
@@ -599,7 +604,7 @@ extension Instruction: ProtobufConvertible {
         case .createObjectWithSpread(let p):
             op = CreateObjectWithSpread(propertyNames: p.propertyNames, numSpreads: inouts.count - 1 - p.propertyNames.count)
         case .createArrayWithSpread(let p):
-            op = CreateArrayWithSpread(numInitialValues: inouts.count - 1, spreads: p.spreads)
+            op = CreateArrayWithSpread(spreads: p.spreads)
         case .createTemplateString(let p):
             op = CreateTemplateString(parts: p.parts)
         case .loadBuiltin(let p):
@@ -701,7 +706,7 @@ extension Instruction: ProtobufConvertible {
             op = Eval(p.code, numArguments: inouts.count)
         case .beginClassDefinition(let p):
             op = BeginClassDefinition(hasSuperclass: p.hasSuperclass_p,
-                                      constructorParameters: try p.constructorParameters.map({ try Type(from: $0) }),
+                                      constructorParameters: try p.constructorParameters.map({ try Parameter(from: $0) }),
                                       instanceProperties: p.instanceProperties,
                                       instanceMethods: Array(zip(p.instanceMethodNames, try p.instanceMethodSignatures.map({ try FunctionSignature(from: $0) }))))
         case .beginMethodDefinition(let p):

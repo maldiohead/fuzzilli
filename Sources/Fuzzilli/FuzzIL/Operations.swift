@@ -43,14 +43,24 @@ public class Operation {
     var numInnerOutputs: Int {
         return Int(numInnerOutputs_)
     }
+    
+    /// The index of the first variadic input.
+    private let firstVariadicInput_: UInt16
+    var firstVariadicInput: Int {
+        Assert(attributes.contains(.isVariadic))
+        return Int(firstVariadicInput_)
+    }
 
-    fileprivate init(numInputs: Int, numOutputs: Int, numInnerOutputs: Int = 0, attributes: Attributes = [], requiredContext: Context = .script, contextOpened: Context = .empty) {
+    fileprivate init(numInputs: Int, numOutputs: Int, numInnerOutputs: Int = 0, firstVariadicInput: Int = -1, attributes: Attributes = [], requiredContext: Context = .script, contextOpened: Context = .empty) {
+        Assert(attributes.contains(.isVariadic) == (firstVariadicInput != -1))
+        Assert(firstVariadicInput == -1 || firstVariadicInput <= numInputs)
         self.attributes = attributes
         self.requiredContext = requiredContext
         self.contextOpened = contextOpened
         self.numInputs_ = UInt16(numInputs)
         self.numOutputs_ = UInt16(numOutputs)
         self.numInnerOutputs_ = UInt16(numInnerOutputs)
+        self.firstVariadicInput_ = attributes.contains(.isVariadic) ? UInt16(firstVariadicInput) : 0
     }
     
     /// Possible attributes of an operation.
@@ -81,9 +91,9 @@ public class Operation {
         // The operation behaves like an (unconditional) jump and
         // so any following code will not be executed.
         static let isJump             = Attributes(rawValue: 1 << 8)
-        // The operation can take a variable number of inputs. Existing
-        // inputs can be removed and new ones added.
-        static let isVarargs          = Attributes(rawValue: 1 << 9)
+        // The operation can take a variable number of inputs.
+        // The firstVariadicInput contains the index of the first variadic input.
+        static let isVariadic          = Attributes(rawValue: 1 << 9)
         // The operation propagates the surrounding context
         static let propagatesSurroundingContext = Attributes(rawValue: 1 << 10)
     }
@@ -209,16 +219,15 @@ class LoadRegExp: Operation {
 }
 
 class CreateObject: Operation {
-    // This array should be sorted to simplify comparison of two operations.
     let propertyNames: [String]
     
     init(propertyNames: [String]) {
         self.propertyNames = propertyNames
-        var flags: Operation.Attributes = [.isVarargs]
+        var flags: Operation.Attributes = [.isVariadic]
         if propertyNames.count > 0 {
             flags.insert(.isParametric)
         }
-        super.init(numInputs: propertyNames.count, numOutputs: 1, attributes: flags)
+        super.init(numInputs: propertyNames.count, numOutputs: 1, firstVariadicInput: 0, attributes: flags)
     }
 }
 
@@ -228,13 +237,12 @@ class CreateArray: Operation {
     }
     
     init(numInitialValues: Int) {
-        super.init(numInputs: numInitialValues, numOutputs: 1, attributes: [.isVarargs])
+        super.init(numInputs: numInitialValues, numOutputs: 1, firstVariadicInput: 0, attributes: [.isVariadic])
     }
 }
 
 class CreateObjectWithSpread: Operation {
     // The property names of the "regular" properties. The remaining input values will be spread.
-    // This array should be sorted to simplify comparison of two operations.
     let propertyNames: [String]
     
     var numSpreads: Int {
@@ -243,11 +251,11 @@ class CreateObjectWithSpread: Operation {
     
     init(propertyNames: [String], numSpreads: Int) {
         self.propertyNames = propertyNames
-        var flags: Operation.Attributes = [.isVarargs]
+        var flags: Operation.Attributes = [.isVariadic]
         if propertyNames.count > 0 {
-            flags.insert(.isParametric)
+            flags.insert([.isParametric])
         }
-        super.init(numInputs: propertyNames.count + numSpreads, numOutputs: 1, attributes: flags)
+        super.init(numInputs: propertyNames.count + numSpreads, numOutputs: 1, firstVariadicInput: 0, attributes: flags)
     }
 }
 
@@ -255,15 +263,18 @@ class CreateArrayWithSpread: Operation {
     // Which inputs to spread.
     let spreads: [Bool]
     
-    init(numInitialValues: Int, spreads: [Bool]) {
-        assert(spreads.count == numInitialValues)
+    init(spreads: [Bool]) {
         self.spreads = spreads
-        super.init(numInputs: numInitialValues, numOutputs: 1, attributes: [.isVarargs, .isParametric])
+        var flags: Operation.Attributes = [.isVariadic]
+        if spreads.count > 0 {
+            flags.insert([.isParametric])
+        }
+        super.init(numInputs: spreads.count, numOutputs: 1, firstVariadicInput: 0, attributes: flags)
     }
 }
 
 class CreateTemplateString: Operation {
-    // Stores the string elements of the temaplate literal
+    // Stores the string elements of the template literal
     let parts: [String]
 
     var numInterpolatedValues: Int {
@@ -273,9 +284,9 @@ class CreateTemplateString: Operation {
     // This operation isn't parametric since it will most likely mutate imported templates (which would mostly be valid JS snippets) and
     // replace them with random strings and/or other template strings that may not be syntactically and/or semantically valid.
     init(parts: [String]) {
+        Assert(parts.count > 0)
         self.parts = parts
-        assert(parts.count > 0)
-        super.init(numInputs: parts.count - 1, numOutputs: 1, attributes: [.isVarargs])
+        super.init(numInputs: parts.count - 1, numOutputs: 1, firstVariadicInput: 0, attributes: [.isVariadic])
     }
 }
 
@@ -423,7 +434,7 @@ class BeginAnyFunctionDefinition: Operation {
         self.isStrict = isStrict
         super.init(numInputs: 0,
                    numOutputs: 1,
-                   numInnerOutputs: signature.inputTypes.count,
+                   numInnerOutputs: signature.numOutputVariablesInCallee,
                    attributes: [.isParametric, .isBlockBegin], contextOpened: contextOpened)
     }
 }
@@ -509,11 +520,11 @@ class CallMethod: Operation {
     }
     
     init(methodName: String, numArguments: Int, spreads: [Bool]) {
-        assert(spreads.count == numArguments)
+        Assert(spreads.count == numArguments)
         self.methodName = methodName
         self.spreads = spreads
         // reference object is the first input
-        super.init(numInputs: numArguments + 1, numOutputs: 1, attributes: [.isParametric, .isVarargs, .isCall])
+        super.init(numInputs: numArguments + 1, numOutputs: 1, firstVariadicInput: 1, attributes: [.isParametric, .isVariadic, .isCall])
     }
 }
 
@@ -524,13 +535,14 @@ class CallComputedMethod: Operation {
     }
 
     init(numArguments: Int, spreads: [Bool]) {
-        assert(spreads.count == numArguments)
+        Assert(spreads.count == numArguments)
         self.spreads = spreads
         // reference object is the first input and method name is the second input
-        super.init(numInputs: numArguments + 2, numOutputs: 1, attributes: [.isVarargs, .isCall])
+        super.init(numInputs: numArguments + 2, numOutputs: 1, firstVariadicInput: 2, attributes: [.isVariadic, .isCall])
     }
 }
 
+// TODO: should these be split into Call Function and CallFunctionWithSpread? Same for Construct and CallSuperConstructor
 class CallFunction: Operation {
     // Which inputs to spread
     let spreads: [Bool]
@@ -540,9 +552,13 @@ class CallFunction: Operation {
     }
     
     init(numArguments: Int, spreads: [Bool]) {
-        assert(spreads.count == numArguments)
+        Assert(spreads.count == numArguments)
         self.spreads = spreads
-        super.init(numInputs: numArguments + 1, numOutputs: 1, attributes: [.isCall, .isVarargs, .isParametric])
+        var flags: Operation.Attributes = [.isVariadic, .isCall]
+        if numArguments > 0 {
+            flags.insert(. isParametric)
+        }
+        super.init(numInputs: numArguments + 1, numOutputs: 1, firstVariadicInput: 1, attributes: flags)
     }
 }
 
@@ -554,10 +570,14 @@ class Construct: Operation {
     }
     
     init(numArguments: Int, spreads: [Bool]) {
-        assert(spreads.count == numArguments)
+        Assert(spreads.count == numArguments)
         self.spreads = spreads
+        var flags: Operation.Attributes = [.isVariadic, .isCall]
+        if numArguments > 0 {
+            flags.insert(. isParametric)
+        }
         // constructor is the first input
-        super.init(numInputs: numArguments + 1, numOutputs: 1, attributes: [.isCall, .isVarargs])
+        super.init(numInputs: numArguments + 1, numOutputs: 1, firstVariadicInput: 1, attributes: flags)
     }
 }
 
@@ -659,8 +679,8 @@ class DestructArray: Operation {
     let hasRestElement: Bool
     
     init(indices: [Int], hasRestElement: Bool) {
-        assert(indices == indices.sorted(), "Indices must be sorted in ascending order")
-        assert(indices.count == Set(indices).count, "Indices must not have duplicates")
+        Assert(indices == indices.sorted(), "Indices must be sorted in ascending order")
+        Assert(indices.count == Set(indices).count, "Indices must not have duplicates")
         self.indices = indices
         self.hasRestElement = hasRestElement
         super.init(numInputs: 1, numOutputs: indices.count)
@@ -673,8 +693,8 @@ class DestructArrayAndReassign: Operation {
     let hasRestElement: Bool
 
     init(indices: [Int], hasRestElement:Bool) {
-        assert(indices == indices.sorted(), "Indices must be sorted in ascending order")
-        assert(indices.count == Set(indices).count, "Indices must not have duplicates")
+        Assert(indices == indices.sorted(), "Indices must be sorted in ascending order")
+        Assert(indices.count == Set(indices).count, "Indices must not have duplicates")
         self.indices = indices
         self.hasRestElement = hasRestElement
         // The first input is the array being destructed
@@ -688,7 +708,7 @@ class DestructObject: Operation {
     let hasRestElement: Bool
 
     init(properties: [String], hasRestElement: Bool) {
-        assert(!properties.isEmpty || hasRestElement, "Must have at least one output")
+        Assert(!properties.isEmpty || hasRestElement, "Must have at least one output")
         self.properties = properties
         self.hasRestElement = hasRestElement
         super.init(numInputs: 1, numOutputs: properties.count + (hasRestElement ? 1 : 0))
@@ -701,7 +721,7 @@ class DestructObjectAndReassign: Operation {
     let hasRestElement: Bool
 
     init(properties: [String], hasRestElement:Bool) {
-        assert(!properties.isEmpty || hasRestElement, "Must have at least one input variable to reassign")
+        Assert(!properties.isEmpty || hasRestElement, "Must have at least one input variable to reassign")
         self.properties = properties
         self.hasRestElement = hasRestElement
         // The first input is the object being destructed
@@ -817,12 +837,12 @@ class Nop: Operation {
 ///
 class BeginClassDefinition: Operation {
     let hasSuperclass: Bool
-    let constructorParameters: [Type]
+    let constructorParameters: [Parameter]
     let instanceProperties: [String]
     let instanceMethods: [(name: String, signature: FunctionSignature)]
 
     init(hasSuperclass: Bool,
-         constructorParameters: [Type],
+         constructorParameters: [Parameter],
          instanceProperties: [String],
          instanceMethods: [(String, FunctionSignature)]) {
         self.hasSuperclass = hasSuperclass
@@ -864,8 +884,13 @@ class CallSuperConstructor: Operation {
     }
 
     init(numArguments: Int, spreads: [Bool]) {
+        Assert(numArguments == spreads.count)
         self.spreads = spreads
-        super.init(numInputs: numArguments, numOutputs: 0, attributes: [.isCall, .isVarargs, .isParametric], requiredContext: [.script, .classDefinition])
+        var flags: Operation.Attributes = [.isVariadic, .isCall]
+        if spreads.count > 0 {
+            flags.insert(.isParametric)
+        }
+        super.init(numInputs: numArguments, numOutputs: 0, firstVariadicInput: 0, attributes: flags, requiredContext: [.script, .classDefinition])
     }
 }
 
@@ -878,7 +903,7 @@ class CallSuperMethod: Operation {
 
     init(methodName: String, numArguments: Int) {
         self.methodName = methodName
-        super.init(numInputs: numArguments, numOutputs: 1, attributes: [.isCall, .isParametric, .isVarargs], requiredContext: [.script, .classDefinition])
+        super.init(numInputs: numArguments, numOutputs: 1, firstVariadicInput: 0, attributes: [.isCall, .isParametric, .isVariadic], requiredContext: [.script, .classDefinition])
     }
 }
 
@@ -916,7 +941,7 @@ class StoreSuperPropertyWithBinop: Operation {
 ///
 class ControlFlowOperation: Operation {
     init(numInputs: Int, numInnerOutputs: Int = 0, attributes: Operation.Attributes, contextOpened: Context = .script) {
-        assert(attributes.contains(.isBlockBegin) || attributes.contains(.isBlockEnd))
+        Assert(attributes.contains(.isBlockBegin) || attributes.contains(.isBlockEnd))
         super.init(numInputs: numInputs, numOutputs: 0, numInnerOutputs: numInnerOutputs, attributes: attributes.union(.propagatesSurroundingContext), contextOpened: contextOpened)
     }
 }
@@ -1043,7 +1068,7 @@ class BeginForOfWithDestruct: ControlFlowOperation {
     let hasRestElement: Bool
 
     init(indices: [Int], hasRestElement: Bool) {
-        assert(indices.count >= 1)
+        Assert(indices.count >= 1)
         self.indices = indices
         self.hasRestElement = hasRestElement
         super.init(numInputs: 1, numInnerOutputs: indices.count, attributes: [.isBlockBegin, .isLoopBegin], contextOpened: [.script, .loop])

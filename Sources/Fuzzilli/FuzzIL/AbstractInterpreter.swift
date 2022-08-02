@@ -39,8 +39,8 @@ public struct AbstractInterpreter {
         state.reset()
         propertyTypes.removeAll()
         methodSignatures.removeAll()
-        assert(activeFunctionDefinitions.isEmpty)
-        assert(classDefinitions.isEmpty)
+        Assert(activeFunctionDefinitions.isEmpty)
+        Assert(classDefinitions.isEmpty)
     }
 
     // Array for collecting type changes during instruction execution
@@ -100,7 +100,7 @@ public struct AbstractInterpreter {
         case is EndClassDefinition:
             state.mergeStates(typeChanges: &typeChanges)
         default:
-            assert(instr.isSimple)
+            Assert(instr.isSimple)
         }
 
         // Track active function definitions
@@ -204,7 +204,7 @@ public struct AbstractInterpreter {
 
     public mutating func setType(of v: Variable, to t: Type) {
         // Variables must not be .anything or .nothing. For variables that can be anything, .unknown is the correct type.
-        assert(t != .anything && t != .nothing)
+        Assert(t != .anything && t != .nothing)
         state.updateType(of: v, to: t)
     }
 
@@ -217,6 +217,34 @@ public struct AbstractInterpreter {
             typeChanges.append((v, t))
         }
         setType(of: v, to: t)
+    }
+
+    private func calleeTypes(for signature: FunctionSignature) -> [Type] {
+
+        func processType(_ type: Type) -> Type {
+            if type == .anything {
+                // .anything in the caller maps to .unknown in the callee
+                return .unknown
+            }
+            return type
+        }
+
+        var types: [Type] = []
+        signature.parameters.forEach { param in
+            switch param {
+                case .plain(let t):
+                    types.append(processType(t))
+                case .opt(let t):
+                    // When processing .opt(.anything) just turns into .unknown and not .unknown | .undefined
+                    // .unknown already means that we don't know what it is, so adding in .undefined doesn't really make sense and might screw other code that checks for .unknown
+                    // See https://github.com/googleprojectzero/fuzzilli/issues/326
+                    types.append(processType(t | .undefined))
+                case .rest(_):
+                    // A rest parameter will just be an array. Currently, we don't support nested array types (i.e. .iterable(of: .integer)) or so, but once we do, we'd need to update this logic.
+                    types.append(environment.arrayType)
+            }
+        }
+        return types
     }
 
     // Execute effects that should be done before scope change
@@ -244,7 +272,7 @@ public struct AbstractInterpreter {
             classDefinitions.pop()
         default:
             // Only instructions beginning block with output variables should have been handled here
-            assert(instr.numOutputs == 0 || !instr.isBlockBegin)
+            Assert(instr.numOutputs == 0 || !instr.isBlockBegin)
         }
     }
 
@@ -252,16 +280,10 @@ public struct AbstractInterpreter {
     private mutating func executeInnerEffects(_ instr: Instruction) {
         // Helper function to process parameters
         func processParameterDeclarations(_ params: ArraySlice<Variable>, signature: FunctionSignature) {
-            for (i, param) in params.enumerated() {
-                let paramType = signature.inputTypes[i]
-                var varType = paramType
-                if paramType == .anything {
-                    varType = .unknown
-                }
-                if paramType.isList {
-                    varType = environment.arrayType
-                }
-                set(param, varType)
+            let types = calleeTypes(for: signature)
+            Assert(types.count == params.count)
+            for (param, type) in zip(params, types) {
+                set(param, type)
             }
         }
 
@@ -554,7 +576,7 @@ public struct AbstractInterpreter {
 
         default:
             // Only simple instructions and block instruction with inner outputs are handled here
-            assert(instr.numOutputs == 0 || (instr.isBlock && instr.numInnerOutputs == 0))
+            Assert(instr.numOutputs == 0 || (instr.isBlock && instr.numInnerOutputs == 0))
         }
     }
 }
@@ -617,7 +639,7 @@ fileprivate struct InterpreterState {
                 guard t != .nothing else { continue }
 
                 // Invariant checking: activeState[v] != nil => parentState[v] != nil
-                assert(parentState.types[v] != nil)
+                Assert(parentState.types[v] != nil)
 
                 // Skip variables that are local to the child state
                 guard parentState.types[v] != .nothing else { continue }
@@ -633,7 +655,7 @@ fileprivate struct InterpreterState {
         }
 
         for (v, c) in numUpdatesPerVariable {
-            assert(parentState.types[v] != .nothing)
+            Assert(parentState.types[v] != .nothing)
 
             // Not all paths updates this variable, so it must be unioned with the previous type
             if c != statesToMerge.count {
@@ -672,8 +694,8 @@ fileprivate struct InterpreterState {
     mutating func updateType(of v: Variable, to newType: Type, from oldType: Type? = nil) {
         // Basic consistency checking. This seems like a decent
         // place to do this since it executes frequently.
-        assert(activeState === stack.last!.last!)
-        assert(parentState === stack[stack.count-2].last!)
+        Assert(activeState === stack.last!.last!)
+        Assert(parentState === stack[stack.count-2].last!)
 
         // Save old type in parent state if it is not already there
         let oldType = oldType ?? currentState.types[v] ?? .nothing      // .nothing expresses that the variable was undefined in the parent state
@@ -683,7 +705,7 @@ fileprivate struct InterpreterState {
 
         // Integrity checking: if the type of v hasn't been updated in the active
         // state yet, then the old type must be equal to the type in the parent state.
-        assert(activeState.types[v] != nil || parentState.types[v] == oldType)
+        Assert(activeState.types[v] != nil || parentState.types[v] == oldType)
 
         activeState.types[v] = newType
         currentState.types[v] = newType

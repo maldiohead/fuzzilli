@@ -55,7 +55,7 @@ public let CodeGenerators: [CodeGenerator] = [
     },
 
     CodeGenerator("ArgumentsGenerator", inContext: .function) { b in
-        assert(b.context.contains(.function))
+        Assert(b.context.contains(.function))
         b.loadArguments()
     },
 
@@ -353,12 +353,12 @@ public let CodeGenerators: [CodeGenerator] = [
     },
 
     CodeGenerator("FunctionReturnGenerator", inContext: .function, input: .anything) { b, val in
-        assert(b.context.contains(.function))
+        Assert(b.context.contains(.function))
         b.doReturn(value: val)
     },
 
     CodeGenerator("YieldGenerator", inContext: .generatorFunction, input: .anything) { b, val in
-        assert(b.context.contains(.generatorFunction))
+        Assert(b.context.contains(.generatorFunction))
         if probability(0.5) {
             b.yield(value: val)
         } else {
@@ -367,7 +367,7 @@ public let CodeGenerators: [CodeGenerator] = [
     },
 
     CodeGenerator("AwaitGenerator", inContext: .asyncFunction, input: .anything) { b, val in
-        assert(b.context.contains(.asyncFunction))
+        Assert(b.context.contains(.asyncFunction))
         b.await(value: val)
     },
 
@@ -474,8 +474,8 @@ public let CodeGenerators: [CodeGenerator] = [
 
         b.defineClass(withSuperclass: superclass) { cls in
             // TODO generate parameter types in a better way
-            let constructorParameterTypes = FunctionSignature(withParameterCount: Int.random(in: 1...3)).inputTypes
-            cls.defineConstructor(withParameters: constructorParameterTypes) { _ in
+            let constructorParameters = FunctionSignature(withParameterCount: Int.random(in: 1...3)).parameters
+            cls.defineConstructor(withParameters: constructorParameters) { _ in
                 // Must call the super constructor if there is a superclass
                 if let superConstructor = superclass {
                     let arguments = b.randCallArguments(for: superConstructor) ?? []
@@ -659,7 +659,7 @@ public let CodeGenerators: [CodeGenerator] = [
     },
 
     CodeGenerator("ContinueGenerator", inContext: .loop) { b in
-        assert(b.context.contains(.loop))
+        Assert(b.context.contains(.loop))
         b.doContinue()
     },
 
@@ -804,9 +804,9 @@ public let CodeGenerators: [CodeGenerator] = [
 
     CodeGenerator("PromiseGenerator") { b in
         // This is just so the variables have the correct type.
-        let resolveFunc = b.definePlainFunction(withSignature: [.anything] => .unknown) { _ in }
+        let resolveFunc = b.definePlainFunction(withSignature: [.plain(.anything)] => .unknown) { _ in }
         let rejectFunc = b.dup(resolveFunc)
-        let handlerSignature = [.function([.anything] => .unknown), .function([.anything] => .unknown)] => .unknown
+        let handlerSignature = [.plain(.function([.plain(.anything)] => .unknown)), .plain(.function([.plain(.anything)] => .unknown))] => .unknown
         let handler = b.definePlainFunction(withSignature: handlerSignature) { args in
             b.reassign(resolveFunc, to: args[0])
             b.reassign(rejectFunc, to: args[1])
@@ -848,12 +848,12 @@ public let CodeGenerators: [CodeGenerator] = [
     },
 
     CodeGenerator("LoadFromScopeGenerator", inContext: .with) { b in
-        assert(b.context.contains(.with))
+        Assert(b.context.contains(.with))
         b.loadFromScope(id: b.genPropertyNameForRead())
     },
 
     CodeGenerator("StoreToScopeGenerator", inContext: .with) { b in
-        assert(b.context.contains(.with))
+        Assert(b.context.contains(.with))
         let value = b.randVar()
         b.storeToScope(value, as: b.genPropertyNameForWrite())
     },

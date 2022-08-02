@@ -29,7 +29,22 @@ fileprivate let TurbofanVerifyTypeGenerator = CodeGenerator("TurbofanVerifyTypeG
     b.eval("%VerifyType(%@)", with: [v])
 }
 
-fileprivate let MapTransitionsTemplate = ProgramTemplate("MapTransitionsTemplate", requiresPrefix: false) { b in
+fileprivate let ResizableArrayBufferGenerator = CodeGenerator("ResizableArrayBufferGenerator", input: .anything) { b, v in
+    let size = Int64.random(in: 0...0x1000)
+    let maxSize = Int64.random(in: size...0x1000000)
+    let ArrayBuffer = b.reuseOrLoadBuiltin("ArrayBuffer")
+    let options = b.createObject(with: ["maxByteLength": b.loadInt(maxSize)])
+    let ab = b.construct(ArrayBuffer, withArgs: [b.loadInt(size), options])
+
+    let TypedArray = b.reuseOrLoadBuiltin(
+        chooseUniform(
+            from: ["Uint8Array", "Int8Array", "Uint16Array", "Int16Array", "Uint32Array", "Int32Array", "Float32Array", "Float64Array", "Uint8ClampedArray"]
+        )
+    )
+    b.construct(TypedArray, withArgs: [ab])
+}
+
+fileprivate let MapTransitionsTemplate = ProgramTemplate("MapTransitionsTemplate") { b in
     // This template is meant to stress the v8 Map transition mechanisms.
     // Basically, it generates a bunch of CreateObject, LoadProperty, StoreProperty, FunctionDefinition,
     // and CallFunction operations operating on a small set of objects and property names.
@@ -43,7 +58,7 @@ fileprivate let MapTransitionsTemplate = ProgramTemplate("MapTransitionsTemplate
     let objType = Type.object(withProperties: ["a"])
 
     // Signature of functions generated in this template
-    let sig = [objType, objType] => objType
+    let sig = [.plain(objType), .plain(objType)] => objType
 
     // Create property values: integers, doubles, and heap objects.
     // These should correspond to the supported property representations of the engine.
@@ -189,6 +204,8 @@ let v8Profile = Profile(
     processArguments: ["--expose-gc",
                        // Uncomment to activate additional features that will be enabled in the future
                        //"--future",
+                       "--harmony",
+                       "--harmony-rab-gsab",
                        "--allow-natives-syntax",
                        "--interrupt-budget=1024",
                        "--fuzzing"],
@@ -196,13 +213,6 @@ let v8Profile = Profile(
     processEnv: [:],
 
     codePrefix: """
-                function placeholder(){return {};}
-                function PrepareFunctionForOptimization(a){%PrepareFunctionForOptimization(a);}
-                function OptimizeFunctionOnNextCall(a){%OptimizeFunctionOnNextCall(a);}
-                function NeverOptimizeFunction(a){%NeverOptimizeFunction(a);}
-                function DeoptimizeFunction(a){%DeoptimizeFunction(a);}
-                function DeoptimizeNow(){%DeoptimizeNow();}
-                function OptimizeOsr(){%OptimizeOsr();}
                 function main() {
                 """,
 
@@ -218,8 +228,9 @@ let v8Profile = Profile(
     crashTests: ["fuzzilli('FUZZILLI_CRASH', 0)", "fuzzilli('FUZZILLI_CRASH', 1)", "fuzzilli('FUZZILLI_CRASH', 2)"],
 
     additionalCodeGenerators: WeightedList<CodeGenerator>([
-        (ForceV8TurbofanGenerator,    10),
-        (TurbofanVerifyTypeGenerator, 10),
+        (ForceV8TurbofanGenerator,      10),
+        (TurbofanVerifyTypeGenerator,   10),
+        (ResizableArrayBufferGenerator, 10),
     ]),
 
     additionalProgramTemplates: WeightedList<ProgramTemplate>([
@@ -231,10 +242,10 @@ let v8Profile = Profile(
 
     additionalBuiltins: [
         "gc"                                            : .function([] => .undefined),
-        "PrepareFunctionForOptimization"                : .function([.function()] => .undefined),
-        "OptimizeFunctionOnNextCall"                    : .function([.function()] => .undefined),
-        "NeverOptimizeFunction"                         : .function([.function()] => .undefined),
-        "DeoptimizeFunction"                            : .function([.function()] => .undefined),
+        "PrepareFunctionForOptimization"                : .function([.plain(.function())] => .undefined),
+        "OptimizeFunctionOnNextCall"                    : .function([.plain(.function())] => .undefined),
+        "NeverOptimizeFunction"                         : .function([.plain(.function())] => .undefined),
+        "DeoptimizeFunction"                            : .function([.plain(.function())] => .undefined),
         "DeoptimizeNow"                                 : .function([] => .undefined),
         "OptimizeOsr"                                   : .function([] => .undefined),
         "placeholder"                                   : .function([] => .object()),
